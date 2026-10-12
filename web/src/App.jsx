@@ -18,6 +18,8 @@ import { RequestsPage } from './pages/RequestsPage.jsx';
 import { TillPage } from './pages/TillPage.jsx';
 import { SalesPage, TicketPage } from './pages/SalesPage.jsx';
 import { FinancePage } from './pages/FinancePage.jsx';
+import { RecipesPage } from './pages/RecipesPage.jsx';
+import { ProductionPage } from './pages/ProductionPage.jsx';
 
 function Gate() {
   const { me, loadError, refresh } = useSession();
@@ -54,6 +56,8 @@ function Gate() {
         <Route path="/sales" element={<SalesPage />} />
         <Route path="/sales/:unitId/:id" element={<TicketPage />} />
         <Route path="/books" element={<FinancePage />} />
+        <Route path="/recipes" element={<RecipesPage />} />
+        <Route path="/production" element={<ProductionPage />} />
         <Route path="/account/password" element={<ChangePasswordPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
