@@ -26,7 +26,7 @@ export async function ownerQuery(sql, params) {
 
 /** Drops everything, re-applies migrations and seeds one tenant with owner, IT and spa partner. */
 export async function resetDatabase() {
-  await ownerQuery(`DROP SCHEMA IF EXISTS sec CASCADE; DROP SCHEMA public CASCADE; CREATE SCHEMA public;
+  await ownerQuery(`DROP SCHEMA IF EXISTS sec CASCADE; DROP SCHEMA IF EXISTS inv CASCADE; DROP SCHEMA public CASCADE; CREATE SCHEMA public;
                     GRANT USAGE ON SCHEMA public TO giddy_app;`);
   await migrate(process.env.DATABASE_OWNER_URL, () => {});
   const c = new pg.Client({ connectionString: process.env.DATABASE_OWNER_URL });
@@ -74,3 +74,20 @@ export async function roleIdByCode(api, code) {
 }
 
 export { request, closePools };
+
+/** Runs raw SQL as the API role inside a user's security context (for testing database-level rules). */
+export async function asUser(userId, tenantId, sql, params) {
+  const { withContext } = await import('../src/db/context.js');
+  return withContext({ userId, tenantId }, (c) => c.query(sql, params));
+}
+
+/** Creates a user, grants a unit role (owner-managed units activate immediately) and signs them in. */
+export async function staffMember(admin, { email, role, businessUnitId, departmentId }) {
+  const created = await admin.post('/api/users', { email, fullName: email.split('@')[0] });
+  const roleId = await roleIdByCode(admin, role);
+  const grant = await admin.post('/api/assignments', { userId: created.body.user.id, roleId, businessUnitId, departmentId });
+  if (grant.status !== 201) throw new Error(`grant failed: ${JSON.stringify(grant.body)}`);
+  const api = await signIn(email, created.body.temporaryPassword);
+  await api.post('/api/me/password', { currentPassword: created.body.temporaryPassword, newPassword: 'StaffPassw0rd' });
+  return { api, userId: created.body.user.id };
+}

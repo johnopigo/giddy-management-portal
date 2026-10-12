@@ -8,9 +8,24 @@ import { OrganisationPage } from './pages/OrganisationPage.jsx';
 import { UsersPage } from './pages/UsersPage.jsx';
 import { ApprovalsPage } from './pages/ApprovalsPage.jsx';
 import { AuditPage } from './pages/AuditPage.jsx';
+import { CatalogPage } from './pages/CatalogPage.jsx';
+import { SuppliersPage } from './pages/SuppliersPage.jsx';
+import { InventoryPage } from './pages/InventoryPage.jsx';
+import { CustomersPage } from './pages/CustomersPage.jsx';
 
 function Gate() {
-  const { me } = useSession();
+  const { me, loadError, refresh } = useSession();
+  if (me === undefined && loadError) {
+    return (
+      <div className="auth-screen">
+        <div className="card auth-card">
+          <h2>Can't reach the server</h2>
+          <p className="muted">{loadError.message}</p>
+          <button className="primary" onClick={refresh}>Try again</button>
+        </div>
+      </div>
+    );
+  }
   if (me === undefined) return <div className="center muted">Loading…</div>;
   if (me === null) return <LoginPage />;
   if (me.user.must_change_password) return <ChangePasswordPage forced />;
@@ -22,6 +37,10 @@ function Gate() {
         <Route path="/users" element={<UsersPage />} />
         <Route path="/approvals" element={<ApprovalsPage />} />
         <Route path="/audit" element={<AuditPage />} />
+        <Route path="/catalog" element={<CatalogPage />} />
+        <Route path="/suppliers" element={<SuppliersPage />} />
+        <Route path="/inventory" element={<InventoryPage />} />
+        <Route path="/customers" element={<CustomersPage />} />
         <Route path="/account/password" element={<ChangePasswordPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
