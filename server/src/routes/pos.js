@@ -14,9 +14,10 @@ const checkoutSchema = z.object({
   note: z.string().max(500).nullish(),
   lines: z.array(z.object({ itemId: z.uuid(), qty: z.number().positive().max(1e6) })).min(1).max(200),
   payments: z.array(z.object({
-    method: z.enum(['cash', 'card', 'transfer']),
+    method: z.enum(['cash', 'card', 'transfer', 'room']),
     amount: z.number().positive().max(1e11),
     reference: z.string().trim().max(80).nullish(),
+    reservationId: z.uuid().nullish(),
   })).min(1).max(10),
 });
 const listQuery = z.object({
@@ -103,7 +104,10 @@ export function posRoutes() {
            FROM sale_line l JOIN item i ON i.id = l.item_id JOIN unit_of_measure u ON u.id = i.base_uom_id
           WHERE l.sale_ticket_id = $1 ORDER BY l.line_no`, [id, businessUnitId])).rows;
       t.payments = (await c.query(
-        'SELECT method, amount, reference FROM sale_payment WHERE sale_ticket_id = $1 ORDER BY method', [id])).rows;
+        `SELECT p.method, p.amount, p.reference,
+                (SELECT string_agg(rm.room_number, ', ') FROM reservation_room rr JOIN room rm ON rm.id = rr.room_id
+                  WHERE rr.reservation_id = p.reservation_id) AS room_numbers
+           FROM sale_payment p WHERE p.sale_ticket_id = $1 ORDER BY p.method`, [id])).rows;
       return t;
     });
     if (!data) throw notFound('Ticket not found.');

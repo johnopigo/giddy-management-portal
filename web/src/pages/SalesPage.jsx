@@ -7,7 +7,7 @@ import { unitAccess } from '../lib/permissions.js';
 import { Badge, ErrorNote, PageHeader, formatDateTime } from '../components/ui.jsx';
 import { UnitPicker, formatMoney, formatQty, useSelectedUnit } from '../components/UnitPicker.jsx';
 
-const METHOD_LABELS = { cash: 'Cash', card: 'Card / POS', transfer: 'Bank transfer' };
+const METHOD_LABELS = { cash: 'Cash', card: 'Card / POS', transfer: 'Bank transfer', room: 'Charged to room' };
 const today = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Africa/Lagos' });
 
 export function SalesPage() {
@@ -121,7 +121,7 @@ export function TicketPage() {
           {Number(x.service_charge_amount) > 0 && <div><span>Service charge {Number(x.service_charge_pct)}%</span><span>{formatMoney(x.service_charge_amount)}</span></div>}
           {Number(x.tax_amount) > 0 && <div><span>VAT {Number(x.tax_pct)}%</span><span>{formatMoney(x.tax_amount)}</span></div>}
           <div className="grand"><span>Total</span><span>{formatMoney(x.total)}</span></div>
-          {x.payments.map((p, i) => <div key={i}><span>{METHOD_LABELS[p.method]}{p.reference ? ` (${p.reference})` : ''}</span><span>{formatMoney(p.amount)}</span></div>)}
+          {x.payments.map((p, i) => <div key={i}><span>{METHOD_LABELS[p.method]}{p.room_numbers ? ` ${p.room_numbers}` : ''}{p.reference ? ` (${p.reference})` : ''}</span><span>{formatMoney(p.amount)}</span></div>)}
           {Number(x.change_due) > 0 && <div><span>Change</span><span>{formatMoney(x.change_due)}</span></div>}
         </div>
         <p className="center-text small">Thank you.</p>

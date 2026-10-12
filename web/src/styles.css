@@ -228,3 +228,17 @@ td.indent { padding-left: 28px; }
 .till > * { min-width: 0; }
 @media (max-width: 960px) { .till { grid-template-columns: minmax(0, 1fr); } }
 .till-cart .row > input { flex: 1 1 0; min-width: 0; }
+
+/* Stage 6–7 */
+.room-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 10px; }
+.room-tile { background: var(--surface); border: 1px solid var(--line); border-left-width: 5px; border-radius: var(--radius); padding: 10px 12px; display: flex; flex-direction: column; gap: 4px; }
+.room-tile select { margin-top: 4px; }
+.room-no { font-size: 1.25rem; }
+.room-available { border-left-color: var(--good-ink); }
+.room-occupied { border-left-color: var(--accent-ink); }
+.room-cleaning { border-left-color: var(--warn-ink); }
+.room-maintenance, .room-out_of_order { border-left-color: var(--bad-ink); }
+
+/* Till payment rows: keep the amount usable; the guest-room picker takes its own line. */
+.pay-row input[type=number] { min-width: 6rem; }
+.pay-row .pay-guest { flex-basis: 100%; }
