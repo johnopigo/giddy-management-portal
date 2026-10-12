@@ -6,6 +6,11 @@ import { ErrorNote, PageHeader, formatDateTime } from '../components/ui.jsx';
 const ENTITY_LABELS = {
   app_user: 'User', user_role_assignment: 'Role assignment', business_unit: 'Business unit',
   business_unit_setting: 'Unit setting', department: 'Department', branch: 'Branch', legal_entity: 'Legal entity',
+  customer: 'Customer', appointment: 'Appointment', appointment_bill: 'Appointment bill', bill_entry: 'Bill line',
+  bookable_resource: 'Bookable resource', bookable_service: 'Bookable service', service_resource: 'Service resource',
+  resource_block: 'Blocked time', client_intake: 'Intake form (sensitive)', treatment_note: 'Treatment note (sensitive)',
+  reservation: 'Reservation', folio: 'Guest bill', folio_entry: 'Guest bill line', room: 'Room', room_type: 'Room type',
+  rate_plan: 'Rate plan', housekeeping_task: 'Housekeeping task',
 };
 
 export function AuditPage() {
@@ -26,7 +31,7 @@ export function AuditPage() {
     <>
       <PageHeader
         title="Audit log"
-        subtitle="Every change, who made it and when. Entries cannot be edited or deleted."
+        subtitle="Every change, and every view of a sensitive record: who, and when. Entries cannot be edited or deleted."
         actions={<button className="secondary" onClick={runVerify}>Verify integrity</button>}
       />
       {verify?.intact === true && <div className="success">The audit chain is intact: no entry has been altered.</div>}

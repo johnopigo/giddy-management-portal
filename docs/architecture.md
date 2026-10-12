@@ -29,7 +29,8 @@ It is rebuilt by triggers whenever role assignments or units change
 - A role assigned **in a unit** grants its permissions in that unit.
 - A role assigned **tenant-wide** grants its permissions in every **owner-managed** unit.
 - In a **partnership** unit a tenant-wide role grants nothing — except roles with
-  `partnership_visibility = 'read'` (System Owner), which get **read** on OPS/FIN/CFG and never SEN.
+  `partnership_visibility = 'read'` (System Owner), which get **read** on every data class, SEN included
+  (the Owner sees everything in the Spa but changes nothing; the partner runs it).
 
 A business table's policies follow this template (see `business_unit_setting`):
 
@@ -43,7 +44,7 @@ CREATE POLICY x_write ON x FOR ALL    USING (... sec.has_scope(business_unit_id,
 
 | Role | Scope | Notes |
 |---|---|---|
-| System Owner | tenant | full control of owner units; read-only Spa (no SEN); assigns restricted roles |
+| System Owner | tenant | full control of owner units; sees everything in the Spa, read-only (SEN included); assigns restricted roles |
 | IT Administrator | tenant | user accounts and role assignments; no business data; sees only account/role audit entries |
 | Group Auditor | tenant | read-only owner units (restricted) |
 | Business Partner | one partnership unit | full control of that unit; approves FIN/CFG grants there (restricted) |
@@ -166,7 +167,7 @@ person involved. The sidebar bell refreshes every minute.
   operational access in some unit. Phone numbers are matched on their last 10 digits, so
   `+234 803…`, `234-803…` and `0803…` are the same customer.
 - `customer_unit_profile` holds each unit's notes, tags and marketing consent, visible only to that unit
-  (and read-only to the Owner for the Spa). Spa health/intake data will live in a separate SEN table (stage 10).
+  (and read-only to the Owner for the Spa). Spa health records live in separate SEN tables (see *Spa*).
 
 ## Books (finance core)
 
@@ -309,7 +310,6 @@ refused and lists them.
 - Staff with a login are notified when a booking is made, moved or cancelled on their schedule.
 - The System Owner sees the Spa read-only.
 
-The Spa intake form (SEN data) comes with the Spa stage.
 
 ## Appointment bills (Content Studio; the Spa uses the same)
 
@@ -333,6 +333,24 @@ Every appointment has a bill (`BIL-<UNIT>-…`). It follows the guest-bill patte
 - The bill closes by itself once the appointment is over (completed, cancelled or no-show) and the balance is zero.
   The bookings list can filter *owing*.
 - Only finance readers (FIN) see bills, balances and deposits. Staff whose only access is their own schedule see neither.
+
+## Spa: intake forms and treatment notes (sensitive)
+
+- **Intake form** (`client_intake`): health conditions, allergies, medication, pregnancy, skin type, preferences,
+  emergency contact and the client's consent (typed name). Each update is a new version; versions are never changed.
+  It is current for `spa.intake_valid_months` (default 12) and only with consent.
+- A service can **need an intake** (`requires_intake`): check-in is refused until a current, consented form is on file.
+- **Treatment notes** (`treatment_note`): what was done, products used and any reaction. They are written by the
+  therapist on the appointment once the client has arrived. Permanent.
+- **Who reads them:**
+  - anyone with SEN in the unit: the partner, a unit manager, the front desk, and the Owner (read-only);
+  - a therapist booked with that client from yesterday to a week ahead, so they can treat safely.
+- **Who writes them:**
+  - intake forms: SEN write (the partner or a unit manager);
+  - notes: the therapist on the appointment, or SEN write.
+- **The tables are closed to the API role.** Every read goes through `bk.intake_get` / `bk.notes_get`, which check
+  access and write a `sensitive_view` entry to the audit log: who looked, at whose record, and in what capacity.
+  Writes are audited as "a version was recorded"; the health details themselves never enter the audit log.
 
 ## Open decisions
 
