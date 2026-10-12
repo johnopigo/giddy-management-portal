@@ -85,5 +85,6 @@ file. They exercise the real database rules through the HTTP API.
 ## Going live
 
 - [docs/deployment.md](docs/deployment.md): the server, Docker, HTTPS, first setup, backups, updates
+- [docs/deploy-hostinger.md](docs/deploy-hostinger.md): Hostinger Node.js web hosting with a managed PostgreSQL database (Neon)
 - [docs/data-import.md](docs/data-import.md): bringing in existing customers, suppliers, items, rooms and stock
 - [docs/go-live-checklist.md](docs/go-live-checklist.md): everything to tick off before opening the doors

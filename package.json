@@ -8,7 +8,11 @@
     "migrate": "npm run migrate -w server",
     "seed": "npm run seed -w server",
     "test": "npm test -w server && npm test -w web",
-    "build": "npm run build -w web"
+    "build": "npm run build -w web",
+    "start": "npm run start -w server",
+    "db:setup-remote": "node --env-file-if-exists=.env server/scripts/db-setup-remote.js",
+    "setup-tenant": "node --env-file-if-exists=.env server/scripts/setup-tenant.js",
+    "import": "node --env-file-if-exists=.env server/scripts/import.js"
   },
   "engines": { "node": ">=22" }
 }
