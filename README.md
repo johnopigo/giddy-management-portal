@@ -69,7 +69,7 @@ file. They exercise the real database rules through the HTTP API.
 | 8 | Booking engine (service-based and slot-based) | **Done** |
 | 9 | Content Studio booth rentals: deposits, add-ons, bills, extending | **Done** |
 | 10 | Spa: intake forms, treatment notes, intake required before treatment | **Done** |
-| 11 | Partnership settlements | Next |
-| 12–13 | Online booking portals with Paystack | |
+| 11 | Partnership settlements: agreed terms (blank until known), monthly statements, accrual and payment | **Done** |
+| 12–13 | Online booking portals with Paystack | Next |
 | 14 | Reports and group dashboard | |
 | 15–16 | Hardening, migration, go-live | |
