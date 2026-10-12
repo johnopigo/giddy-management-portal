@@ -7,7 +7,7 @@ import { ErrorNote, PageHeader } from '../components/ui.jsx';
 import { UnitPicker, formatMoney, formatQty, useSelectedUnit } from '../components/UnitPicker.jsx';
 import { changeDue, ticketTotals } from '../lib/pricing.js';
 
-const METHODS = [['cash', 'Cash'], ['card', 'Card / POS'], ['transfer', 'Bank transfer']];
+const METHODS = [['cash', 'Cash'], ['card', 'Card / POS'], ['transfer', 'Bank transfer'], ['room', 'Charge to room']];
 
 export function TillPage() {
   const { me } = useSession();
@@ -28,6 +28,7 @@ function Till({ unitId }) {
   const [locationId, setLocationId] = useState(() => { try { return localStorage.getItem(`till.loc.${unitId}`) ?? ''; } catch { return ''; } });
   const catalog = useLoad(() => api.get(`/api/pos/${unitId}/catalog${locationId ? `?locationId=${locationId}` : ''}`), [unitId, locationId]);
   const locations = useLoad(() => api.get(`/api/inventory/${unitId}/locations`), [unitId]);
+  const inHouse = useLoad(() => api.get('/api/apartments/in-house').catch(() => []), [unitId]);
   const [search, setSearch] = useState('');
   const [cart, setCart] = useState([]);           // [{ itemId, name, price, qty, uom, isStockable }]
   const [discountPct, setDiscountPct] = useState(0);
@@ -64,7 +65,8 @@ function Till({ unitId }) {
         departmentId: effectiveDept, locationId: locationId || null, discountPct: Number(discountPct) || 0,
         lines: cart.map((l) => ({ itemId: l.itemId, qty: Number(l.qty) })),
         payments: payments.filter((p) => Number(p.amount) > 0)
-          .map((p) => ({ method: p.method, amount: Number(p.amount), reference: p.reference || null })),
+          .map((p) => ({ method: p.method, amount: Number(p.amount), reference: p.reference || null,
+            reservationId: p.method === 'room' ? p.reservationId || null : null })),
       });
       navigate(`/sales/${unitId}/${id}?printed=0`);
     } catch (err) {
@@ -134,12 +136,18 @@ function Till({ unitId }) {
         </div>
         <h3>Payment</h3>
         {payments.map((p, i) => (
-          <div key={i} className="row">
+          <div key={i} className="row wrap pay-row">
             <select value={p.method} onChange={(e) => setPayment(i, 'method', e.target.value)}>
               {METHODS.map(([k, v]) => <option key={k} value={k}>{v}</option>)}
             </select>
             <input className="grow" type="number" min="0" step="any" placeholder="Amount" value={p.amount} onChange={(e) => setPayment(i, 'amount', e.target.value)} aria-label="Payment amount" />
-            {p.method !== 'cash' && <input placeholder="Ref." value={p.reference} onChange={(e) => setPayment(i, 'reference', e.target.value)} aria-label="Payment reference" />}
+            {['card', 'transfer'].includes(p.method) && <input placeholder="Ref." value={p.reference} onChange={(e) => setPayment(i, 'reference', e.target.value)} aria-label="Payment reference" />}
+            {p.method === 'room' && (
+              <select className="pay-guest" value={p.reservationId ?? ''} onChange={(e) => setPayment(i, 'reservationId', e.target.value)} aria-label="Guest room">
+                <option value="">Room / guest…</option>
+                {(inHouse.data ?? []).map((g) => <option key={g.reservation_id} value={g.reservation_id}>Room {g.room_numbers} · {g.guest_name}</option>)}
+              </select>
+            )}
             {payments.length > 1 && <button className="link" onClick={() => setPayments(payments.filter((_, j) => j !== i))}>×</button>}
           </div>
         ))}

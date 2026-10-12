@@ -232,10 +232,41 @@ Every unit keeps its own double-entry ledger (`fin` schema).
   Yield variance = (actual − planned) ÷ planned.
 - Movement → account mapping is now a table (`fin.movement_account`), so new movement types add a row.
 
+## Luxury Apartments (front desk)
+
+- **Setup** (CFG write): room types (code, base nightly rate, occupancy, amenities), rooms (number, floor,
+  type) and rate plans (a different nightly rate for a date range, e.g. December). The nightly price is the
+  newest rate plan covering that night, else the type's base rate.
+- **Bookings** (`apt.book`): one reservation can hold several rooms. A room is either chosen or assigned
+  automatically (first free room of the type). Every booked night is a row in `room_night`, whose primary key
+  is (room, date), so two bookings can never hold the same room on the same night; concurrent attempts
+  get a clean 409 "room 201 is already booked on …" (custom SQLSTATE `GD409`). Arrival can't be in the past;
+  stays over 90 nights are refused (long lets are a separate agreement).
+- **Statuses:** `confirmed → checked_in → checked_out`, or `confirmed → cancelled | no_show`
+  (cancelling needs a reason; no-show only after the arrival date; either releases the nights, and the bill must be
+  settled first — refund the deposit or post a fee). Stays can be extended if the extra nights are free.
+- **Check-in** only on or after the arrival date and only into rooms that are not under maintenance,
+  out of order or being cleaned. The room becomes *occupied*.
+- **Guest bill** (`folio`, `FOL-<UNIT>-…`), one per reservation, with immutable entries:
+  - *Night audit* (`apt.post_room_charges`, "Post room charges") charges every in-house night up to today with
+    service charge and VAT — Dr 1100 Guest ledger, Cr 4200 Room revenue / 4100 / 2100. It is idempotent.
+  - *Payments and deposits* (cash, card, transfer): Dr 1000/1010/1020, Cr 1100. *Refunds* only of a credit balance.
+  - *Extra charges* (laundry, airport pick-up) to 4000; *adjustments* (manager only, not above the balance due)
+    reduce room revenue.
+- **Charge to room from any till.** A cashier in any unit can take payment method *Charge to room* and pick an
+  in-house guest (`/api/apartments/in-house` lists only room numbers and names). The sale posts in the
+  selling unit's books as Dr 1150 Due from Apartments; the Apartments books post Dr 1100 Guest ledger,
+  Cr 2200 Due to F&B, and the bill shows the line as "From another unit". Voiding the sale reverses the bill line
+  while the guest is still in house.
+- **Check-out** charges any nights not yet charged, releases unused nights (early departure), and requires a zero
+  balance. The bill closes, the room goes to *cleaning* and a cleaning task is created.
+- **Housekeeping:** tasks (clean, inspect, maintenance) per room. Only the assigned housekeeper or the front desk
+  can update a task; finishing a clean makes the room available. Setting a room to maintenance creates a task too.
+
 ## Open decisions
 
 - Partnership revenue share: which side the rate applies to, the revenue basis, who collects
   payments, and whether retail counts. The agreement table (stage 11) stores all four as settings.
 - Department-level narrowing is enforced at the till (stage 4). Reading data is still unit-wide.
-- Supplier payments (settling 2000 Accounts payable) and settling balances between units (1150 / 2200)
-  are not built yet.
+- Supplier payments (settling 2000 Accounts payable) and settling balances between units (1150 / 2200,
+  now also created by charge-to-room) are not built yet.

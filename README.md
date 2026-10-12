@@ -65,8 +65,8 @@ file. They exercise the real database rules through the HTTP API.
 | 3 | Procurement: purchase orders, goods receiving, average costing, transfers between units, item requests, notifications | **Done** |
 | 4 | Point of sale (till, receipts, voids) and finance core (double-entry ledger, trial balance, month-end close) | **Done** |
 | 5 | Food & Beverage: recipes (ingredients deducted at the till), production orders with yield variance | **Done** |
-| 6–7 | Luxury Apartments: rooms, reservations, folios, housekeeping, charge-to-room | Next |
-| 8 | Booking engine (service-based and slot-based) | |
+| 6–7 | Luxury Apartments: rooms, reservations, folios, housekeeping, charge-to-room | **Done** |
+| 8 | Booking engine (service-based and slot-based) | Next |
 | 9 | Content Studio booth rentals | |
 | 10 | Spa operations | |
 | 11 | Partnership settlements | |

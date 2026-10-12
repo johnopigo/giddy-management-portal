@@ -26,6 +26,8 @@ export function fromDatabaseError(err) {
     case '23514':
     case '22P02':
       return badRequest(err.message);
+    case 'GD409': // a clash raised by our own functions (e.g. a room already booked): keep the message
+      return conflict(err.message.charAt(0).toUpperCase() + err.message.slice(1) + '.');
     case '40001':
     case '40P01':
       return conflict('The record was changed by someone else. Please retry.');
