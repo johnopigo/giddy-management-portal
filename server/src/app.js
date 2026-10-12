@@ -27,13 +27,18 @@ import { productionRoutes } from './routes/production.js';
 import { apartmentRoutes } from './routes/apartments.js';
 import { bookingRoutes } from './routes/bookings.js';
 import { partnershipRoutes } from './routes/partnership.js';
+import { publicRoutes } from './routes/public.js';
 
 export function createApp() {
   const app = express();
   app.set('trust proxy', 1);
   app.disable('x-powered-by');
   app.use(helmet());
-  app.use(express.json({ limit: '200kb' }));
+  app.use(express.json({
+    limit: '200kb',
+    // Paystack signs the exact bytes it sends, so the webhook needs the raw body.
+    verify: (req, res, buf) => { if (req.originalUrl.startsWith('/api/public/paystack/webhook')) req.rawBody = buf; },
+  }));
   app.use(cookieParser());
   app.use(rateLimit({ windowMs: 60_000, limit: config.isTest ? 100_000 : 600, standardHeaders: 'draft-8', legacyHeaders: false }));
   app.use(requestContext);
@@ -41,6 +46,8 @@ export function createApp() {
 
   app.get('/api/health', (req, res) => res.json({ ok: true }));
   app.use('/api/auth', authenticate, authRoutes());
+  // Public booking pages: no login (see routes/public.js).
+  app.use('/api/public', publicRoutes());
 
   const authed = express.Router();
   authed.use(authenticate, requireAuth);

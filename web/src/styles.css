@@ -281,3 +281,16 @@ td.indent { padding-left: 28px; }
 .facts dd { margin: 0; }
 .intake { border-left: 3px solid var(--warn-ink); padding-left: 12px; margin: 10px 0; }
 .notes li { padding: 8px 0; border-bottom: 1px solid var(--line); }
+
+/* Public booking site */
+.public-shell { max-width: 880px; margin: 0 auto; padding: 16px 16px 40px; min-height: 100vh; }
+.public-head { display: flex; align-items: center; justify-content: space-between; padding: 8px 0 16px; }
+.public-head .brand { text-decoration: none; color: inherit; display: flex; gap: 10px; align-items: center; }
+.public-head .brand > span:last-child { display: flex; flex-direction: column; }
+.public-foot { text-align: center; margin-top: 32px; }
+.choice-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; margin-bottom: 16px; }
+.choice { display: block; text-align: left; font: inherit; color: inherit; text-decoration: none; cursor: pointer; margin: 0; }
+.choice h2 { margin-top: 0; }
+.choice:hover { border-color: var(--accent-ink); }
+.choice.active { border: 2px solid var(--accent-ink); }
+.test-pay { max-width: 480px; }

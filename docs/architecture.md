@@ -393,6 +393,50 @@ the month of the void) and appointment add-ons (with their service charge, VAT a
 
 Each step notifies the other side. Every change is in the audit log.
 
+## Online booking portals (rooms, Spa, Studio) and Paystack
+
+**The public site** is at `/book/<tenant address>`, with no login. Guests can book:
+- a **stay**: room type and dates. Prices include service charge and VAT; room numbers are never shown.
+- a **Spa treatment** or **Studio hire**: from the services marked *Bookable online*. Free times are shown without
+  staff or room names.
+
+**The system account.** Every public request runs as the tenant's system account "Online booking" (`app_user.is_system`).
+- It holds the `ONLINE_BOOKING` role in each bookable unit, so the booking engines apply exactly the same rules as for
+  staff: availability, no double booking, deposits and postings.
+- It cannot sign in, is never listed, and cannot be changed through the API.
+- Its role cannot be given to anyone else.
+- It is created by the platform (`web.provision_tenant`, also when a unit is added).
+
+**Each unit decides** through its own settings, edited by its managers (for the Spa, the partner):
+
+| Setting | Meaning |
+|---|---|
+| `online.enabled` | off by default |
+| `online.deposit_pct` | stays: % of the stay with service charge and VAT; default 100. Treatments use the service's deposit % |
+| `online.hold_minutes` | how long an unpaid booking is held; default 30 |
+| `online.cancel_hours` | online cancellation closes this many hours before the start; default 24 |
+
+**Deposits:**
+1. A booking that needs a deposit is created at once (so nobody else can take the room or slot) and **held**.
+2. The guest goes to Paystack, which sends them back to their booking page. The server then verifies the payment
+   with Paystack. Paystack's **webhook** (HMAC-SHA512 signed with the secret key; unsigned or wrongly signed calls
+   are refused) confirms it too.
+3. A verified payment of the exact amount is posted as a card payment to the guest bill or appointment bill, and the
+   hold is lifted. The unit's staff are notified.
+4. A short or mismatched payment is not accepted; staff are told to check it.
+5. Holds not paid in time are released by a sweep (every minute, and on each public request). The booking is cancelled
+   with the reason recorded.
+6. A payment that arrives after its hold was released is recorded, and staff are told to refund or rebook.
+
+**The guest's booking page** (`/book/manage/<secret link>`; only a hash of the token is stored) shows the booking and
+offers *Pay* while held.
+- **Cancel** while nothing is paid: a held booking any time, otherwise only before the cutoff.
+- **Ask to cancel** once paid: staff decide on the refund and are notified.
+
+**Without a Paystack key** (development and tests only), a built-in test gateway stands in: a page in the app says
+"test payment" and lets you pay or decline; no money moves. In production, online payments refuse to start without
+`PAYSTACK_SECRET_KEY`. `PUBLIC_URL` is the address Paystack returns guests to.
+
 ## Open decisions
 
 - Partnership revenue share: the rate, who receives it, the revenue basis, who collects payments and whether retail

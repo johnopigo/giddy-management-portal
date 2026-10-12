@@ -53,6 +53,8 @@ export function requireAuth(req, res, next) {
  */
 export function requireCsrfHeader(req, res, next) {
   if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return next();
+  // Paystack's server-to-server webhook is authenticated by its signature instead.
+  if (req.originalUrl.split('?')[0] === '/api/public/paystack/webhook') return next();
   if (req.get('x-requested-with') !== 'giddy') return next(forbidden('Missing request header.'));
   next();
 }

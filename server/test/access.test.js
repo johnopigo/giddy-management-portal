@@ -15,13 +15,15 @@ const settingsUrl = (unit) => `/api/org/business-units/${seed.units[unit]}/setti
 
 test('owner reads and writes settings in owner-managed units', async () => {
   for (const unit of ['APARTMENTS', 'FNB', 'STUDIO']) {
-    assert.equal((await owner.get(settingsUrl(unit))).body.length, 2, unit);
+    const keys = (await owner.get(settingsUrl(unit))).body.map((x) => x.key);
+    assert.ok(keys.includes('tax.vat_pct') && keys.includes('charges.service_pct'), unit);
+    assert.equal(keys.includes('online.enabled'), unit !== 'FNB', `${unit}: online booking settings only where bookable`);
     assert.equal((await owner.put(`${settingsUrl(unit)}/tax.vat_pct`, { value: 7.5 })).status, 200, unit);
   }
 });
 
 test('owner reads Spa settings but cannot change them', async () => {
-  assert.equal((await owner.get(settingsUrl('SPA'))).body.length, 2);
+  assert.ok((await owner.get(settingsUrl('SPA'))).body.some((x) => x.key === 'tax.vat_pct'));
   const res = await owner.put(`${settingsUrl('SPA')}/tax.vat_pct`, { value: 0 });
   assert.equal(res.status, 403);
   const after = await partner.get(settingsUrl('SPA'));
