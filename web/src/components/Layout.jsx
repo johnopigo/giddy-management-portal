@@ -23,6 +23,7 @@ export function Layout({ children }) {
         <NotificationBell />
         <nav>
           <NavLink to="/" end>Dashboard</NavLink>
+          {hasClass('FIN') && <NavLink to="/reports">Reports</NavLink>}
           {me.scope.some((s) => s.unit_type === 'apartments' && s.access.OPS) && <NavLink to="/front-desk">Front desk</NavLink>}
           {me.scope.some((s) => ['spa', 'content_studio'].includes(s.unit_type) && s.access.OPS) && <NavLink to="/appointments">Appointments</NavLink>}
           {me.scope.some((s) => s.access.FIN === 'write') && <NavLink to="/till">Till</NavLink>}
