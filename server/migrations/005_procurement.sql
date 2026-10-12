@@ -90,6 +90,17 @@ CREATE POLICY item_cost_read ON item_cost FOR SELECT TO giddy_app
   USING (tenant_id = sec.current_tenant_id() AND sec.has_scope(business_unit_id, 'FIN'));
 GRANT SELECT ON item_cost TO giddy_app;
 
+-- Direction of each movement type: 'in', 'out' or 'move' (between two locations of one unit).
+-- Later stages add movement types by replacing only this function.
+CREATE FUNCTION inv.movement_direction(p_type stock_movement_type) RETURNS text
+LANGUAGE sql IMMUTABLE AS $$
+  SELECT CASE p_type::text
+    WHEN 'opening_balance' THEN 'in' WHEN 'adjustment_in' THEN 'in' WHEN 'receipt' THEN 'in' WHEN 'inter_unit_in' THEN 'in'
+    WHEN 'adjustment_out' THEN 'out' WHEN 'issue' THEN 'out' WHEN 'wastage' THEN 'out' WHEN 'inter_unit_out' THEN 'out'
+    WHEN 'transfer' THEN 'move'
+  END
+$$;
+
 -- =====================================================================
 -- inv.apply_movement: the single stock engine. NO permission checks — callers check.
 -- Not executable by the API role; only reachable through the checked wrappers below.
@@ -108,8 +119,8 @@ DECLARE
   v_tenant   uuid := sec.current_tenant_id();
   v_user     uuid := sec.current_user_id();
   v_item     item%ROWTYPE;
-  v_incoming boolean := p_type IN ('opening_balance', 'adjustment_in', 'receipt', 'inter_unit_in');
-  v_outgoing boolean := p_type IN ('adjustment_out', 'issue', 'wastage', 'inter_unit_out');
+  v_incoming boolean := inv.movement_direction(p_type) = 'in';
+  v_outgoing boolean := inv.movement_direction(p_type) = 'out';
   v_batch    uuid := p_batch_id;
   v_left     numeric := p_qty;
   v_take     numeric;
@@ -135,9 +146,12 @@ BEGIN
     RAISE EXCEPTION 'item % is not enabled in this business unit', v_item.name USING ERRCODE = 'check_violation';
   END IF;
 
+  IF inv.movement_direction(p_type) IS NULL THEN
+    RAISE EXCEPTION 'unknown movement type %', p_type;
+  END IF;
   IF v_incoming AND (p_to IS NULL OR p_from IS NOT NULL)
      OR v_outgoing AND (p_from IS NULL OR p_to IS NOT NULL)
-     OR p_type = 'transfer' AND (p_from IS NULL OR p_to IS NULL OR p_from = p_to) THEN
+     OR NOT v_incoming AND NOT v_outgoing AND (p_from IS NULL OR p_to IS NULL OR p_from = p_to) THEN
     RAISE EXCEPTION 'locations do not match a % movement', p_type USING ERRCODE = 'check_violation';
   END IF;
   IF EXISTS (SELECT 1 FROM stock_location
@@ -234,7 +248,7 @@ BEGIN
     EXIT WHEN v_left <= 0;
     v_take := least(v_left, r.qty_on_hand);
     UPDATE stock_balance SET qty_on_hand = qty_on_hand - v_take, updated_at = now() WHERE id = r.balance_id;
-    IF p_type = 'transfer' THEN
+    IF NOT v_outgoing THEN
       INSERT INTO stock_balance (tenant_id, business_unit_id, location_id, item_id, batch_id, qty_on_hand)
       VALUES (v_tenant, p_bu, p_to, p_item, r.batch_id, v_take)
       ON CONFLICT ON CONSTRAINT stock_balance_slot_uq
@@ -242,7 +256,7 @@ BEGIN
     END IF;
     INSERT INTO stock_movement (tenant_id, business_unit_id, movement_type, item_id, batch_id, from_location_id,
                                 to_location_id, qty, unit_cost, reason, source_doc_type, source_doc_id, posted_by)
-    VALUES (v_tenant, p_bu, p_type, p_item, r.batch_id, p_from, CASE WHEN p_type = 'transfer' THEN p_to END,
+    VALUES (v_tenant, p_bu, p_type, p_item, r.batch_id, p_from, CASE WHEN NOT v_outgoing THEN p_to END,
             v_take, v_avg, p_reason, p_source_type, p_source_id, v_user)
     RETURNING id INTO v_id;
     RETURN NEXT v_id;
@@ -277,8 +291,8 @@ CREATE OR REPLACE FUNCTION inv.post_movement(
 RETURNS SETOF bigint
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS $$
 BEGIN
-  IF p_type::text IN ('receipt', 'inter_unit_out', 'inter_unit_in') THEN
-    RAISE EXCEPTION '% movements are recorded from purchase orders and transfers', p_type USING ERRCODE = 'check_violation';
+  IF p_type::text NOT IN ('opening_balance', 'adjustment_in', 'adjustment_out', 'transfer', 'issue', 'wastage') THEN
+    RAISE EXCEPTION '% movements are recorded from their documents (orders, transfers, sales)', p_type USING ERRCODE = 'check_violation';
   END IF;
   IF p_type IN ('opening_balance', 'adjustment_in', 'adjustment_out') THEN
     IF NOT sec.has_scope(p_bu, 'CFG', true) THEN
