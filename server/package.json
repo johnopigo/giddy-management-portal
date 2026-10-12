@@ -9,7 +9,9 @@
     "start": "node --env-file-if-exists=../.env src/index.js",
     "migrate": "node --env-file-if-exists=../.env src/db/migrate.js",
     "seed": "node --env-file-if-exists=../.env scripts/seed.js",
-    "test": "NODE_ENV=test node --env-file-if-exists=../.env --test --test-concurrency=1 'test/**/*.test.js'"
+    "setup-tenant": "node --env-file-if-exists=../.env scripts/setup-tenant.js",
+    "import": "node --env-file-if-exists=../.env scripts/import.js",
+    "test": "NODE_ENV=test PAYMENTS_TEST_MODE=true node --env-file-if-exists=../.env --test --test-concurrency=1 'test/**/*.test.js'"
   },
   "dependencies": {
     "cookie-parser": "^1.4.7",

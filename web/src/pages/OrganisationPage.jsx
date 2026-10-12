@@ -25,7 +25,10 @@ export function OrganisationPage() {
           <p className="muted small">Guests book rooms, Spa treatments and Studio hire there. Each unit appears once its managers set
             <code> online.enabled</code> to <code>true</code> in its settings below; <code>online.deposit_pct</code>,
             <code> online.hold_minutes</code> and <code>online.cancel_hours</code> set the deposit, how long an unpaid booking is held,
-            and how late guests may cancel online. Spa and Studio services also need "Bookable online" ticked.</p>
+            and how late guests may cancel online. Limits against bookings that are never paid: <code>online.max_open_per_guest</code>
+            (unpaid bookings one guest or address may have open), <code>online.max_unpaid_holds</code> (unpaid holds a unit keeps at
+            once), <code>online.max_nights</code> and <code>online.max_days_ahead</code>. Spa and Studio services also need "Bookable
+            online" ticked; give them a deposit so free bookings cannot fill the diary.</p>
         </div>
       )}
       <div className="grid-2">

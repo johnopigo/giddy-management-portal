@@ -5,10 +5,23 @@ import { unauthorized, forbidden, HttpError } from '../lib/errors.js';
 
 export const SESSION_COOKIE = 'giddy_session';
 
+// Secret parts of public addresses (a guest's booking link, a payment reference) are not logged.
+const redact = (path) => path.replace(/^(\/api\/public\/(?:manage|test-payments))\/[^/]+/, '$1/…');
+
 /** Attaches a correlation id and a req.db(fn) helper that runs fn inside the caller's security context. */
 export function requestContext(req, res, next) {
   req.correlationId = req.get('x-correlation-id')?.slice(0, 64) || crypto.randomUUID();
   res.set('x-correlation-id', req.correlationId);
+  if (process.env.ACCESS_LOG === 'true') {
+    const started = process.hrtime.bigint();
+    res.on('finish', () => {
+      // One JSON line per request; never the body, cookies or query string (they can carry personal data).
+      console.log(JSON.stringify({
+        at: new Date().toISOString(), id: req.correlationId, method: req.method, path: redact(req.originalUrl.split('?')[0]),
+        status: res.statusCode, ms: Number((process.hrtime.bigint() - started) / 1_000_000n), user: req.auth?.userId ?? null,
+      }));
+    });
+  }
   req.db = (fn) =>
     withContext(
       { userId: req.auth?.userId, tenantId: req.auth?.tenantId, correlationId: req.correlationId, ip: req.ip },

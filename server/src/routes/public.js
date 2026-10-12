@@ -3,7 +3,7 @@ import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
 import { z } from 'zod';
 import { parse } from '../lib/validate.js';
-import { badRequest, notFound } from '../lib/errors.js';
+import { badRequest, notFound, HttpError } from '../lib/errors.js';
 import { withContext } from '../db/context.js';
 import { hashToken } from '../auth/tokens.js';
 import { config } from '../config.js';
@@ -65,56 +65,123 @@ const enabled = (c, unitId) => c.query(
 const setting = async (c, unitId, key, fallback) =>
   (await c.query('SELECT value FROM business_unit_setting WHERE business_unit_id = $1 AND key = $2', [unitId, key])).rows[0]?.value ?? fallback;
 
+const digitsOf = (phone) => phone.replace(/\D/g, '').slice(-10);
+
+/**
+ * The customer record for an online guest. A phone number or email belongs to one customer, so a
+ * booking joins the record that has it; but details typed on a public page are unverified, so the
+ * booking keeps what the guest typed, nothing stored is ever shown back, and a partial match is
+ * flagged for the staff to check.
+ */
 async function findOrCreateCustomer(c, guest) {
-  const digits = guest.phone.replace(/\D/g, '').slice(-10);
   const found = (await c.query(
-    `SELECT id FROM customer WHERE tenant_id = sec.current_tenant_id() AND (phone_normalized = $1 OR email = $2::citext)
-      ORDER BY (phone_normalized = $1) DESC LIMIT 1`, [digits, guest.email])).rows[0];
-  if (found) return found.id;
-  return (await c.query(
+    `SELECT id, phone_normalized = $1 AND email = $2::citext AND lower(full_name) = lower($3) AS same
+       FROM customer WHERE tenant_id = sec.current_tenant_id() AND (phone_normalized = $1 OR email = $2::citext)
+      ORDER BY (phone_normalized = $1) DESC LIMIT 1`, [digitsOf(guest.phone), guest.email, guest.fullName])).rows[0];
+  if (found) return { customerId: found.id, differ: !found.same };
+  const id = (await c.query(
     `INSERT INTO customer (tenant_id, full_name, phone, email) VALUES (sec.current_tenant_id(), $1, $2, $3) RETURNING id`,
     [guest.fullName, guest.phone, guest.email])).rows[0].id;
+  return { customerId: id, differ: false };
+}
+
+const CHECK_DETAILS = ' The details typed differ from the customer record: check them with the guest.';
+
+/**
+ * Limits that stop anyone tying up rooms and appointment times with bookings they never pay for:
+ * a guest (by email, phone or network address) may have only a few unpaid online bookings open
+ * at once, and a unit only so many unpaid holds in total. Online payment must also be available
+ * when a deposit is due, so nothing is held that cannot be paid.
+ */
+async function checkLimits(c, req, unitId, guest, needsDeposit) {
+  if (needsDeposit && gatewayName() === 'none') throw new HttpError(503, 'Online payments are not set up yet. Please call us to book.');
+  const perGuest = Number(await setting(c, unitId, 'online.max_open_per_guest', 2));
+  const perUnit = Number(await setting(c, unitId, 'online.max_unpaid_holds', 20));
+  const open = (await c.query(
+    `SELECT count(*) FILTER (WHERE o.guest_email = $2::citext OR o.guest_digits = $3 OR o.client_ip = $4::inet)::int AS mine,
+            count(*) FILTER (WHERE o.payment_status = 'pending')::int AS holds
+       FROM online_booking o
+       LEFT JOIN reservation r ON r.id = o.reservation_id LEFT JOIN appointment a ON a.id = o.appointment_id
+      WHERE o.business_unit_id = $1 AND o.payment_status IN ('pending', 'not_needed')
+        AND (r.status = 'confirmed' AND r.check_out >= current_date OR a.status = 'booked' AND a.ends_at > now())`,
+    [unitId, guest.email, digitsOf(guest.phone), req.ip ?? null])).rows[0];
+  if (open.mine >= perGuest) {
+    throw new HttpError(429, 'You already have unpaid online bookings with us. Pay for or cancel one first, or call us.');
+  }
+  if (needsDeposit && open.holds >= perUnit) {
+    throw new HttpError(503, 'Online booking is very busy right now. Please try again in a few minutes or call us.');
+  }
 }
 
 /** Creates the online booking record; returns the guest's secret link token. */
-async function recordBooking(c, { unitId, reservationId, appointmentId, customerId, amount, holdMinutes }) {
+async function recordBooking(c, req, { unitId, reservationId, appointmentId, customerId, differ, guest, amount, holdMinutes }) {
   const token = crypto.randomBytes(32).toString('base64url');
   const id = (await c.query(
     `INSERT INTO online_booking (tenant_id, business_unit_id, reservation_id, appointment_id, customer_id, manage_token_hash,
-                                 amount_due, payment_status)
-     VALUES (sec.current_tenant_id(), $1, $2, $3, $4, $5, $6, $7) RETURNING id`,
-    [unitId, reservationId ?? null, appointmentId ?? null, customerId, hashToken(token), amount, amount > 0 ? 'pending' : 'not_needed'])).rows[0].id;
+                                 amount_due, payment_status, guest_name, guest_email, guest_phone, guest_digits, client_ip, details_differ)
+     VALUES (sec.current_tenant_id(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::inet, $13) RETURNING id`,
+    [unitId, reservationId ?? null, appointmentId ?? null, customerId, hashToken(token), amount, amount > 0 ? 'pending' : 'not_needed',
+      guest.fullName, guest.email, guest.phone, digitsOf(guest.phone), req.ip ?? null, differ])).rows[0].id;
   if (amount > 0) await c.query('SELECT web.set_hold($1, $2)', [id, holdMinutes]);
   return { id, token };
 }
 
-/** Starts a payment with the gateway for a pending booking; returns the page to send the guest to. */
-async function startPayment(req, t, bookingId, token, email) {
-  const reference = `GDY-${crypto.randomBytes(9).toString('base64url')}`;
-  const b = (await withContext(ctx(req, t), async (c) => {
-    await c.query('UPDATE online_booking SET payment_reference = $2, gateway = $3, gateway_data = $4 WHERE id = $1',
-      [bookingId, reference, gatewayName(), JSON.stringify({
+/**
+ * Sends the guest to pay a pending booking. A payment page already opened for it with the same
+ * gateway is reused, so a guest who clicks "Pay" twice still has one payment to make; every
+ * reference ever started stays linked to the booking, so whichever one is paid is applied.
+ */
+async function startPayment(req, t, bookingId, token) {
+  const name = gatewayName();
+  const b = await withContext(ctx(req, t), async (c) => {
+    const o = (await c.query('SELECT amount_due, guest_email FROM online_booking WHERE id = $1 FOR UPDATE', [bookingId])).rows[0];
+    const open = (await c.query(
+      `SELECT reference, payment_url FROM online_payment_attempt WHERE online_booking_id = $1 AND gateway = $2 AND payment_url IS NOT NULL
+        ORDER BY created_at DESC LIMIT 1`, [bookingId, name])).rows[0];
+    if (open) return { ...o, url: open.payment_url };
+    const reference = `GDY-${crypto.randomBytes(9).toString('base64url')}`;
+    await c.query(`INSERT INTO online_payment_attempt (reference, tenant_id, online_booking_id, gateway) VALUES ($1, sec.current_tenant_id(), $2, $3)`,
+      [reference, bookingId, name]);
+    await c.query('UPDATE online_booking SET payment_reference = $2, gateway = $3, gateway_data = gateway_data || $4 WHERE id = $1',
+      [bookingId, reference, name, JSON.stringify({
         started_at: new Date().toISOString(),
         // Only the test gateway needs to know where to send the guest back (Paystack is told via callback_url).
-        ...(gatewayName() === 'test' ? { return_url: `/book/manage/${token}` } : {}),
+        ...(name === 'test' ? { return_url: `/book/manage/${token}` } : {}),
       })]);
-    return (await c.query('SELECT amount_due FROM online_booking WHERE id = $1', [bookingId])).rows[0];
-  }));
+    return { ...o, reference };
+  });
+  if (b.url) return b.url;
   const { url } = await gateway().initialize({
-    email, amount: Number(b.amount_due), reference, callbackUrl: `${config.publicUrl}/book/manage/${token}`,
+    email: b.guest_email, amount: Number(b.amount_due), reference: b.reference, callbackUrl: `${config.publicUrl}/book/manage/${token}`,
     metadata: { booking_id: bookingId },
   });
+  await withContext(ctx(req, t), (c) => c.query('UPDATE online_payment_attempt SET payment_url = $2 WHERE reference = $1', [b.reference, url]));
   return url;
 }
+
+/** Is this payment reference one started for this booking? */
+const attemptOf = async (c, bookingId, reference) =>
+  (await c.query('SELECT 1 FROM online_payment_attempt WHERE online_booking_id = $1 AND reference = $2', [bookingId, reference])).rows.length > 0;
 
 /**
  * Applies a successful payment to the booking (idempotent): posts it to the guest bill or folio,
  * releases the hold and tells the unit's staff. A payment that arrives after the hold was released
  * is kept on record and flagged for a refund.
  */
-async function confirmPayment(c, bookingId, result) {
+async function confirmPayment(c, bookingId, reference, result) {
   const o = (await c.query('SELECT * FROM online_booking WHERE id = $1 FOR UPDATE', [bookingId])).rows[0];
-  if (!o || o.payment_status === 'paid' || o.payment_status === 'not_needed') return o;
+  if (!o || o.payment_status === 'not_needed') return o;
+  if (o.payment_status === 'paid') {
+    // A second payment for the same booking (two payment pages paid): keep it on record for a refund.
+    const seen = [o.gateway_data?.paid_reference, ...(o.gateway_data?.extra_payments ?? [])];
+    if (result.status === 'success' && !seen.includes(reference)) {
+      await c.query(`UPDATE online_booking SET gateway_data = jsonb_set(gateway_data, '{extra_payments}', coalesce(gateway_data -> 'extra_payments', '[]') || to_jsonb($2::text)) WHERE id = $1`,
+        [o.id, reference]);
+      await c.query('SELECT web.notify($1, $2, $3, $4)', [o.business_unit_id, 'Duplicate online payment: refund due',
+        `Reference ${reference} paid a booking that was already paid (${o.gateway_data?.paid_reference}). Refund it from the Paystack dashboard.`, null]);
+    }
+    return o;
+  }
   if (result.status !== 'success') {
     await c.query(`UPDATE online_booking SET gateway_data = gateway_data || $2 WHERE id = $1`,
       [o.id, JSON.stringify({ last_status: result.status, checked_at: new Date().toISOString() })]);
@@ -124,29 +191,39 @@ async function confirmPayment(c, bookingId, result) {
     await c.query(`UPDATE online_booking SET gateway_data = gateway_data || $2 WHERE id = $1`,
       [o.id, JSON.stringify({ mismatch: { amount: result.amount, currency: result.currency } })]);
     await c.query('SELECT web.notify($1, $2, $3, $4)', [o.business_unit_id, 'Online payment needs checking',
-      `Reference ${o.payment_reference}: the amount paid does not match the deposit due.`, null]);
+      `Reference ${reference}: the amount paid does not match the deposit due.`, null]);
     return o;
   }
   const live = o.reservation_id
     ? (await c.query(`SELECT r.status = 'confirmed' AS live, r.booking_ref, f.id AS folio_id FROM reservation r JOIN folio f ON f.reservation_id = r.id WHERE r.id = $1`, [o.reservation_id])).rows[0]
     : (await c.query(`SELECT a.status = 'booked' AS live, a.booking_ref FROM appointment a WHERE a.id = $1`, [o.appointment_id])).rows[0];
   if (!live.live) {
-    await c.query(`UPDATE online_booking SET payment_status = 'paid', paid_at = now(), gateway_data = gateway_data || '{"late": true}' WHERE id = $1`, [o.id]);
+    await c.query(`UPDATE online_booking SET payment_status = 'paid', paid_at = now(),
+                     gateway_data = gateway_data || jsonb_build_object('late', true, 'paid_reference', $2::text) WHERE id = $1`, [o.id, reference]);
     await c.query('SELECT web.notify($1, $2, $3, $4)', [o.business_unit_id, 'Late online payment: refund due',
-      `${live.booking_ref} was released before the payment (${o.payment_reference}) arrived. Refund it from the Paystack dashboard or rebook the guest.`, null]);
+      `${live.booking_ref} was released before the payment (${reference}) arrived. Refund it from the Paystack dashboard or rebook the guest.`, null]);
     return o;
   }
   if (o.reservation_id) {
-    await c.query(`SELECT apt.folio_post($1, 'payment', 'Online payment (Paystack)', $2, 'card', $3)`, [live.folio_id, o.amount_due, o.payment_reference]);
+    await c.query(`SELECT apt.folio_post($1, 'payment', 'Online payment (Paystack)', $2, 'card', $3)`, [live.folio_id, o.amount_due, reference]);
   } else {
-    await c.query(`SELECT bk.bill_post($1, 'payment', 'Online deposit (Paystack)', $2, 'card', $3)`, [o.appointment_id, o.amount_due, o.payment_reference]);
+    await c.query(`SELECT bk.bill_post($1, 'payment', 'Online deposit (Paystack)', $2, 'card', $3)`, [o.appointment_id, o.amount_due, reference]);
   }
   await c.query('SELECT web.set_hold($1, NULL)', [o.id]);
-  await c.query(`UPDATE online_booking SET payment_status = 'paid', paid_at = now() WHERE id = $1`, [o.id]);
+  await c.query(`UPDATE online_booking SET payment_status = 'paid', paid_at = now(), payment_reference = $2,
+                   gateway_data = gateway_data || jsonb_build_object('paid_reference', $2::text) WHERE id = $1`, [o.id, reference]);
   await c.query('SELECT web.notify($1, $2, $3, $4)', [o.business_unit_id, 'New online booking',
-    `${live.booking_ref}: deposit paid online.`, o.reservation_id ? `/front-desk/${o.business_unit_id}/reservations/${o.reservation_id}`
+    `${live.booking_ref}: deposit paid online.${o.details_differ ? CHECK_DETAILS : ''}`, o.reservation_id ? `/front-desk/${o.business_unit_id}/reservations/${o.reservation_id}`
       : `/appointments/${o.business_unit_id}/${o.appointment_id}`]);
   return o;
+}
+
+/** Online bookings may be made only so far ahead (online.max_days_ahead). */
+async function checkAhead(c, unitId, startsAt) {
+  const days = Number(await setting(c, unitId, 'online.max_days_ahead', 365));
+  if (new Date(startsAt) - Date.now() > (days + 1) * 86_400_000) {
+    throw badRequest(`Online bookings can be made up to ${days} days ahead. Please call us for later dates.`);
+  }
 }
 
 const sweep = (c) => c.query('SELECT web.expire_holds()');
@@ -172,7 +249,7 @@ export function publicRoutes() {
     if (event?.event === 'charge.success' && event.data?.reference) {
       const t = (await withContext({}, (c) => c.query('SELECT * FROM web.resolve_booking(NULL, $1)', [event.data.reference]))).rows[0];
       if (t?.tenant_id) {
-        await withContext(ctx(req, t), (c) => confirmPayment(c, t.booking_id,
+        await withContext(ctx(req, t), (c) => confirmPayment(c, t.booking_id, event.data.reference,
           { status: event.data.status, amount: event.data.amount / 100, currency: event.data.currency }));
       }
     }
@@ -197,9 +274,12 @@ export function publicRoutes() {
     if (gatewayName() !== 'test') throw notFound();
     const t = (await withContext({}, (c) => c.query('SELECT * FROM web.resolve_booking(NULL, $1)', [reference]))).rows[0];
     if (!t?.tenant_id) throw notFound('Payment not found.');
-    await withContext(ctx(req, t), (c) => c.query(
-      `UPDATE online_booking SET gateway_data = gateway_data || jsonb_build_object('test_outcome', $2::text) WHERE id = $1 AND payment_reference = $3`,
-      [t.booking_id, outcome, reference]));
+    await withContext(ctx(req, t), async (c) => {
+      if (!(await attemptOf(c, t.booking_id, reference))) throw notFound('Payment not found.');
+      await c.query(`UPDATE online_booking SET gateway_data = jsonb_set(gateway_data, '{test_outcomes}',
+                       coalesce(gateway_data -> 'test_outcomes', '{}') || jsonb_build_object($3::text, $2::text)) WHERE id = $1`,
+        [t.booking_id, outcome, reference]);
+    });
     res.status(204).end();
   });
 
@@ -207,14 +287,14 @@ export function publicRoutes() {
   const summary = async (c, bookingId) => {
     const o = (await c.query(
       `SELECT o.id, o.amount_due, o.currency, o.payment_status, o.paid_at, o.cancel_requested_at, o.payment_reference,
-              bu.name AS unit_name, bu.unit_type, bu.time_zone, c.full_name AS guest_name,
+              bu.name AS unit_name, bu.unit_type, bu.time_zone, o.guest_name,
               r.booking_ref AS res_ref, r.status AS res_status, r.check_in, r.check_out, r.hold_expires_at AS res_hold,
               (SELECT string_agg(t.name, ', ') FROM reservation_room rr JOIN room_type t ON t.id = rr.room_type_id WHERE rr.reservation_id = r.id) AS room_types,
               a.booking_ref AS appt_ref, a.status AS appt_status, a.starts_at, a.ends_at, a.hold_expires_at AS appt_hold, s.name AS service_name,
               (SELECT value FROM business_unit_setting WHERE business_unit_id = bu.id AND key = 'online.cancel_hours') AS cancel_hours,
               extract(epoch FROM coalesce(a.starts_at, (r.check_in + time '14:00') AT TIME ZONE bu.time_zone) - now()) / 3600 AS hours_left,
               to_char(r.check_in, 'YYYY-MM-DD') AS check_in_text, to_char(r.check_out, 'YYYY-MM-DD') AS check_out_text
-         FROM online_booking o JOIN business_unit bu ON bu.id = o.business_unit_id JOIN customer c ON c.id = o.customer_id
+         FROM online_booking o JOIN business_unit bu ON bu.id = o.business_unit_id
          LEFT JOIN reservation r ON r.id = o.reservation_id
          LEFT JOIN appointment a ON a.id = o.appointment_id LEFT JOIN bookable_service s ON s.id = a.service_id
         WHERE o.id = $1`, [bookingId])).rows[0];
@@ -243,11 +323,14 @@ export function publicRoutes() {
   router.post('/manage/:token/verify', writes, async (req, res) => {
     const t = await resolveToken(req);
     const { reference } = parse(verifySchema, req.body);
-    const row = (await withContext(ctx(req, t), (c) => c.query('SELECT * FROM online_booking WHERE id = $1', [t.booking_id]))).rows[0];
-    if (row.payment_reference !== reference) throw badRequest('That payment does not belong to this booking.');
-    if (row.payment_status === 'pending') {
+    const row = await withContext(ctx(req, t), async (c) => {
+      if (!(await attemptOf(c, t.booking_id, reference))) throw badRequest('That payment does not belong to this booking.');
+      return (await c.query('SELECT * FROM online_booking WHERE id = $1', [t.booking_id])).rows[0];
+    });
+    // Checked while pending, and after payment too (a second payment page may also have been paid).
+    if (['pending', 'paid'].includes(row.payment_status) && row.gateway_data?.paid_reference !== reference) {
       const result = await gateway().verify(reference, row);
-      await withContext(ctx(req, t), (c) => confirmPayment(c, t.booking_id, result));
+      await withContext(ctx(req, t), (c) => confirmPayment(c, t.booking_id, reference, result));
     }
     res.json(await withContext(ctx(req, t), (c) => summary(c, t.booking_id)));
   });
@@ -255,14 +338,9 @@ export function publicRoutes() {
   router.post('/manage/:token/pay', writes, async (req, res) => {
     const t = await resolveToken(req);
     const { token } = req.params;
-    const info = await withContext(ctx(req, t), async (c) => {
-      await sweep(c);
-      const s = await summary(c, t.booking_id);
-      const email = (await c.query('SELECT c.email FROM online_booking o JOIN customer c ON c.id = o.customer_id WHERE o.id = $1', [t.booking_id])).rows[0].email;
-      return { s, email };
-    });
-    if (!info.s.canPay) throw badRequest('This booking has nothing to pay online.');
-    res.json({ paymentUrl: await startPayment(req, t, t.booking_id, token, info.email) });
+    const s = await withContext(ctx(req, t), async (c) => { await sweep(c); return summary(c, t.booking_id); });
+    if (!s.canPay) throw badRequest('This booking has nothing to pay online.');
+    res.json({ paymentUrl: await startPayment(req, t, t.booking_id, token) });
   });
 
   router.post('/manage/:token/cancel', writes, async (req, res) => {
@@ -331,22 +409,27 @@ export function publicRoutes() {
       const unit = await enabled(c, b.unitId);
       if (unit.unit_type !== 'apartments') throw notFound('Online booking is not available for this.');
       await sweep(c);
-      const customerId = await findOrCreateCustomer(c, b.guest);
+      const nights = Math.round((new Date(b.checkOut) - new Date(b.checkIn)) / 86_400_000);
+      const maxNights = Number(await setting(c, unit.id, 'online.max_nights', 30));
+      if (nights > maxNights) throw badRequest(`Stays of more than ${maxNights} nights cannot be booked online. Please call us.`);
+      await checkAhead(c, unit.id, `${b.checkIn}T12:00:00Z`);
+      const pct = Number(await setting(c, unit.id, 'online.deposit_pct', 100));
+      await checkLimits(c, req, unit.id, b.guest, pct > 0);
+      const { customerId, differ } = await findOrCreateCustomer(c, b.guest);
       const resId = (await c.query(`SELECT apt.book($1, $2, 'online', $3, $4, $5, $6, $7, $8) AS id`,
         [unit.id, customerId, b.checkIn, b.checkOut, b.adults, b.children, b.notes ?? null, JSON.stringify([{ roomTypeId: b.roomTypeId }])])).rows[0].id;
-      const pct = Number(await setting(c, unit.id, 'online.deposit_pct', 100));
       const amount = Number((await c.query(
         `SELECT round(bk.gross($2, sum(n.rate)) * $3 / 100, 2) AS a FROM room_night n JOIN reservation_room rr ON rr.id = n.reservation_room_id
           WHERE rr.reservation_id = $1`, [resId, unit.id, pct])).rows[0].a);
-      const hold = Number(await setting(c, unit.id, 'online.hold_minutes', 30));
-      const rec = await recordBooking(c, { unitId: unit.id, reservationId: resId, customerId, amount, holdMinutes: hold });
+      const hold = Number(await setting(c, unit.id, 'online.hold_minutes', 15));
+      const rec = await recordBooking(c, req, { unitId: unit.id, reservationId: resId, customerId, differ, guest: b.guest, amount, holdMinutes: hold });
       const ref = (await c.query('SELECT booking_ref FROM reservation WHERE id = $1', [resId])).rows[0].booking_ref;
       if (amount === 0) {
-        await c.query('SELECT web.notify($1, $2, $3, $4)', [unit.id, 'New online booking', `${ref}: no deposit needed.`, `/front-desk/${unit.id}/reservations/${resId}`]);
+        await c.query('SELECT web.notify($1, $2, $3, $4)', [unit.id, 'New online booking', `${ref}: no deposit needed.${differ ? CHECK_DETAILS : ''}`, `/front-desk/${unit.id}/reservations/${resId}`]);
       }
       return { ...rec, amount, bookingRef: ref };
     });
-    const paymentUrl = made.amount > 0 ? await startPayment(req, t, made.id, made.token, b.guest.email) : null;
+    const paymentUrl = made.amount > 0 ? await startPayment(req, t, made.id, made.token) : null;
     res.status(201).json({ token: made.token, bookingRef: made.bookingRef, amount: made.amount, paymentUrl });
   });
 
@@ -385,19 +468,22 @@ export function publicRoutes() {
       const ok = (await c.query('SELECT 1 FROM bookable_service WHERE id = $1 AND business_unit_id = $2 AND online_bookable AND is_active', [b.serviceId, unit.id])).rows[0];
       if (!ok) throw notFound('That service cannot be booked online.');
       await sweep(c);
-      const customerId = await findOrCreateCustomer(c, b.guest);
+      await checkAhead(c, unit.id, b.startsAt);
+      const needsDeposit = (await c.query('SELECT deposit_pct > 0 AS d FROM bookable_service WHERE id = $1', [b.serviceId])).rows[0].d;
+      await checkLimits(c, req, unit.id, b.guest, needsDeposit);
+      const { customerId, differ } = await findOrCreateCustomer(c, b.guest);
       const apptId = (await c.query(`SELECT bk.book($1, $2, $3, $4, 'online', $5, '{}') AS id`,
         [b.serviceId, customerId, b.startsAt, b.slots ?? null, b.notes ?? null])).rows[0].id;
       const a = (await c.query('SELECT booking_ref, deposit_due FROM appointment WHERE id = $1', [apptId])).rows[0];
       const amount = Number(a.deposit_due);
-      const hold = Number(await setting(c, unit.id, 'online.hold_minutes', 30));
-      const rec = await recordBooking(c, { unitId: unit.id, appointmentId: apptId, customerId, amount, holdMinutes: hold });
+      const hold = Number(await setting(c, unit.id, 'online.hold_minutes', 15));
+      const rec = await recordBooking(c, req, { unitId: unit.id, appointmentId: apptId, customerId, differ, guest: b.guest, amount, holdMinutes: hold });
       if (amount === 0) {
-        await c.query('SELECT web.notify($1, $2, $3, $4)', [unit.id, 'New online booking', `${a.booking_ref}: no deposit needed.`, `/appointments/${unit.id}/${apptId}`]);
+        await c.query('SELECT web.notify($1, $2, $3, $4)', [unit.id, 'New online booking', `${a.booking_ref}: no deposit needed.${differ ? CHECK_DETAILS : ''}`, `/appointments/${unit.id}/${apptId}`]);
       }
       return { ...rec, amount, bookingRef: a.booking_ref };
     });
-    const paymentUrl = made.amount > 0 ? await startPayment(req, t, made.id, made.token, b.guest.email) : null;
+    const paymentUrl = made.amount > 0 ? await startPayment(req, t, made.id, made.token) : null;
     res.status(201).json({ token: made.token, bookingRef: made.bookingRef, amount: made.amount, paymentUrl });
   });
 
