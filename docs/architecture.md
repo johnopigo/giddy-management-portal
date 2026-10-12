@@ -263,6 +263,54 @@ Every unit keeps its own double-entry ledger (`fin` schema).
 - **Housekeeping:** tasks (clean, inspect, maintenance) per room. Only the assigned housekeeper or the front desk
   can update a task; finishing a clean makes the room available. Setting a room to maintenance creates a task too.
 
+## Booking engine (Spa and Content Studio)
+
+One engine (`bk` schema) serves both kinds of booking:
+
+- **Service-based** (`mode = 'service'`): a treatment of fixed length, e.g. a 60-minute massage.
+- **Slot-based** (`mode = 'slot'`): a resource hired in consecutive slots, e.g. a booth for 1–4 hours at a price per slot.
+
+**Setup** (managers, CFG write; in the Spa that is the partner):
+- *Resources* are what gets booked: staff, rooms, booths and equipment. Each has weekly hours in the unit's time zone
+  (several intervals per day are allowed). A staff resource can be linked to the person's login.
+- *Services* have a length (or slot length), a turnaround buffer and a price.
+- Each service lists the resources that can deliver it, grouped by **role**. A booking takes one free resource of
+  every role, e.g. one *therapist* and one *room*.
+
+**Availability** (`bk.availability`):
+- Service mode offers start times every `booking.step_min` minutes (default 15). Slot mode offers one start per slot
+  from each resource's opening time.
+- A start time is offered when every role has a resource that is open for the whole appointment and not blocked or
+  booked for the appointment plus its buffer.
+- Bookings open `booking.max_days_ahead` days ahead (default 90) and start on 5-minute marks.
+
+**No double booking:**
+- `bk.book` first locks every candidate resource row (`FOR UPDATE`, in id order), then checks and picks. Concurrent
+  bookings queue; they don't race.
+- Among free resources, the least busy that day is picked, so work is spread across staff. A requested resource
+  ("Ada, please") narrows the choice.
+- Each held resource is a row in `appointment_resource` with a time range. The exclusion constraint
+  `EXCLUDE USING gist (resource_id WITH =, during WITH &&) WHERE (is_active)` guarantees no resource is held twice,
+  even if the checks were bypassed. Clashes return 409 with a plain message ("no room is free for Swedish massage
+  at Thu 15 Oct 11:00").
+
+**Lifecycle:** `booked → checked_in → completed`, or `booked → cancelled | no_show`.
+- Moving a booking re-picks its resources; the move screen keeps the same staff member unless unticked. The price stays as booked.
+- Check-in happens on the day. Finishing early hands the rest of the time back to the schedule.
+- Cancelling needs a reason. No-show is only possible after the start time. Both release the resources.
+
+**Blocks:** blocked time (leave, lunch, maintenance) can't be booked. Creating a block over existing bookings is
+refused and lists them.
+
+**Who sees what:**
+- Anyone with OPS in the unit sees the schedule.
+- Staff whose only role there is *self*-scoped (therapists, attendants; `sec.is_self_only`) see only the bookings
+  they are on. They can't book, move or block.
+- Staff with a login are notified when a booking is made, moved or cancelled on their schedule.
+- The System Owner sees the Spa read-only.
+
+Payments for appointments and the Spa intake form (SEN data) come with the Studio and Spa stages.
+
 ## Open decisions
 
 - Partnership revenue share: which side the rate applies to, the revenue basis, who collects

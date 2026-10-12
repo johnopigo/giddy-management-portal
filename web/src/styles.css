@@ -242,3 +242,31 @@ td.indent { padding-left: 28px; }
 /* Till payment rows: keep the amount usable; the guest-room picker takes its own line. */
 .pay-row input[type=number] { min-width: 6rem; }
 .pay-row .pay-guest { flex-basis: 100%; }
+
+/* Appointments: day timeline (one row per resource), free-time chips */
+.timeline-wrap { overflow-x: auto; margin-top: 12px; }
+.timeline { display: flex; flex-direction: column; gap: 6px; }
+.tl-row { display: flex; align-items: stretch; min-height: 52px; }
+.tl-head { min-height: 22px; }
+.tl-label { flex: 0 0 140px; padding-right: 10px; line-height: 1.2; }
+.tl-track { position: relative; flex: 1; border-radius: 6px; }
+.tl-closed { background: repeating-linear-gradient(135deg, var(--bg), var(--bg) 6px, var(--line) 6px, var(--line) 7px); }
+.tl-tick { position: absolute; top: 0; font-size: 0.75rem; color: var(--muted); transform: translateX(-50%); }
+.tl-tick:first-child { transform: none; }
+.tl-open { position: absolute; top: 0; bottom: 0; background: var(--surface); border: 1px solid var(--line); border-radius: 6px; }
+.tl-block { position: absolute; top: 4px; bottom: 4px; background: var(--warn-bg); color: var(--warn-ink); border-radius: 6px;
+  padding: 2px 6px; overflow: hidden; display: flex; align-items: center; gap: 4px; font-size: 0.8rem; }
+.tl-x { background: none; border: 0; color: inherit; cursor: pointer; padding: 0 2px; font-size: 1rem; line-height: 1; }
+.tl-appt { position: absolute; top: 4px; bottom: 4px; border-radius: 6px; padding: 2px 6px; overflow: hidden; text-decoration: none;
+  display: flex; flex-direction: column; justify-content: center; font-size: 0.8rem; line-height: 1.2;
+  background: var(--accent-bg); color: var(--accent-ink); border-left: 3px solid var(--accent-ink); }
+.tl-checked_in { background: var(--good-bg); color: var(--good-ink); border-left-color: var(--good-ink); }
+.tl-completed { background: var(--bg); color: var(--muted); border-left-color: var(--muted); }
+.tl-no_show { background: var(--bad-bg); color: var(--bad-ink); border-left-color: var(--bad-ink); }
+.tl-text { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.slot-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(72px, 1fr)); gap: 6px; }
+.slot-chip { padding: 8px 4px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); cursor: pointer; font: inherit; }
+.slot-chip:hover { border-color: var(--accent-ink); }
+.slot-chip.active { background: var(--accent-ink); border-color: var(--accent-ink); color: #fff; }
+.day-checks { flex-direction: row; flex-wrap: wrap; gap: 10px; margin: 0; }
+@media (max-width: 700px) { .tl-label { flex-basis: 96px; font-size: 0.85rem; } }

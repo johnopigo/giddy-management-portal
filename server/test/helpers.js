@@ -70,6 +70,7 @@ export function wrap(agent) {
     post: (url, body) => h(agent.post(url)).send(body ?? {}),
     put: (url, body) => h(agent.put(url)).send(body ?? {}),
     patch: (url, body) => h(agent.patch(url)).send(body ?? {}),
+    delete: (url) => h(agent.delete(url)),
   };
 }
 
