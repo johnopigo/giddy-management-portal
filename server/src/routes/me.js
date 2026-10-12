@@ -13,7 +13,7 @@ export function meRoutes() {
   router.get('/', async (req, res) => {
     const data = await req.db(async (c) => {
       const user = (await c.query(
-        `SELECT u.id, u.email, u.full_name, u.must_change_password, t.id AS tenant_id, t.name AS tenant_name
+        `SELECT u.id, u.email, u.full_name, u.must_change_password, t.id AS tenant_id, t.name AS tenant_name, t.public_slug
            FROM app_user u JOIN tenant t ON t.id = u.tenant_id WHERE u.id = sec.current_user_id()`,
       )).rows[0];
       const assignments = (await c.query(

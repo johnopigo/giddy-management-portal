@@ -18,6 +18,16 @@ export function OrganisationPage() {
   return (
     <>
       <PageHeader title="Organisation" subtitle="Business units, departments and unit settings." />
+      {me.user.public_slug && (
+        <div className="card">
+          <strong>Online booking page:</strong>{' '}
+          <a href={`/book/${me.user.public_slug}`} target="_blank" rel="noreferrer">{window.location.origin}/book/{me.user.public_slug}</a>
+          <p className="muted small">Guests book rooms, Spa treatments and Studio hire there. Each unit appears once its managers set
+            <code> online.enabled</code> to <code>true</code> in its settings below; <code>online.deposit_pct</code>,
+            <code> online.hold_minutes</code> and <code>online.cancel_hours</code> set the deposit, how long an unpaid booking is held,
+            and how late guests may cancel online. Spa and Studio services also need "Bookable online" ticked.</p>
+        </div>
+      )}
       <div className="grid-2">
         {businessUnits.map((bu) => (
           <section key={bu.id} className={`card unit-card ${selected === bu.id ? 'selected' : ''}`}>

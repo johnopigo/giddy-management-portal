@@ -12,4 +12,9 @@ export const config = {
   cookieSecure: process.env.COOKIE_SECURE === 'true',
   webOrigin: process.env.WEB_ORIGIN ?? 'http://localhost:5173',
   isTest: process.env.NODE_ENV === 'test',
+  isProduction: process.env.NODE_ENV === 'production',
+  // Public address of the web app, used for Paystack's return link to the guest's booking page.
+  publicUrl: (process.env.PUBLIC_URL ?? process.env.WEB_ORIGIN ?? 'http://localhost:5173').replace(/\/$/, ''),
+  // Paystack secret key (sk_test_… or sk_live_…). Without it, outside production, a built-in test gateway is used.
+  paystackSecretKey: process.env.PAYSTACK_SECRET_KEY ?? '',
 };

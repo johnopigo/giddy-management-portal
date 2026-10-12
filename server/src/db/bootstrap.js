@@ -62,5 +62,8 @@ export async function bootstrapTenant(c, { tenantName, users }) {
       [tenant.id, row.id, await roleId(u.role), u.unit ? units[u.unit] : null]);
   }
 
+  // The "Online booking" system account, the public booking address and each unit's online settings (off).
+  await c.query('SELECT web.provision_tenant($1)', [tenant.id]);
+
   return { tenantId: tenant.id, branchId: branch.id, units, users: createdUsers };
 }

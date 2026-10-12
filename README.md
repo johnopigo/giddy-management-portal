@@ -47,6 +47,13 @@ npm run dev:web
 Open http://localhost:5173 and sign in as `owner@giddy.local`, `it@giddy.local` or
 `partner@giddy.local` (development password `GiddyDev2026`).
 
+### Online booking and Paystack
+
+The public booking site is at `/book/<address>` (the address is shown on the Organisation page). A unit appears there
+once its managers set `online.enabled` to `true` in its settings. For real payments set `PAYSTACK_SECRET_KEY`
+(`sk_test_…` while testing, `sk_live_…` when live) and `PUBLIC_URL`, and in the Paystack dashboard set the webhook URL
+to `<your API address>/api/public/paystack/webhook`. Without a key, development uses a built-in test gateway (no money moves).
+
 ## Tests
 
 ```bash
@@ -70,6 +77,6 @@ file. They exercise the real database rules through the HTTP API.
 | 9 | Content Studio booth rentals: deposits, add-ons, bills, extending | **Done** |
 | 10 | Spa: intake forms, treatment notes, intake required before treatment | **Done** |
 | 11 | Partnership settlements: agreed terms (blank until known), monthly statements, accrual and payment | **Done** |
-| 12–13 | Online booking portals with Paystack | Next |
-| 14 | Reports and group dashboard | |
+| 12–13 | Online booking portals (rooms, Spa, Studio) with Paystack deposits, holds and the guest's booking page | **Done** |
+| 14 | Reports and group dashboard | Next |
 | 15–16 | Hardening, migration, go-live | |

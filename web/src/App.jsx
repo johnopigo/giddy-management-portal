@@ -1,4 +1,5 @@
 import { Navigate, Route, Routes } from 'react-router-dom';
+import { BookingSite } from './pages/public/BookingSite.jsx';
 import { SessionProvider, useSession } from './session.jsx';
 import { Layout } from './components/Layout.jsx';
 import { LoginPage } from './pages/LoginPage.jsx';
@@ -77,8 +78,10 @@ function Gate() {
 
 export function App() {
   return (
-    <SessionProvider>
-      <Gate />
-    </SessionProvider>
+    <Routes>
+      {/* The public booking site needs no login and never loads the staff session. */}
+      <Route path="/book/*" element={<BookingSite />} />
+      <Route path="*" element={<SessionProvider><Gate /></SessionProvider>} />
+    </Routes>
   );
 }
