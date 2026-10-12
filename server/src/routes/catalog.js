@@ -87,6 +87,8 @@ export function catalogRoutes() {
          LEFT JOIN business_unit ob ON ob.id = i.owner_business_unit_id
          LEFT JOIN business_unit_item bui ON bui.item_id = i.id AND bui.business_unit_id = $2
         WHERE ($1::text IS NULL OR i.name ILIKE '%' || $1 || '%' OR i.sku ILIKE $1 || '%')
+          -- with a unit selected, show only what that unit may use: group items and its own
+          AND ($2::uuid IS NULL OR i.owner_business_unit_id IS NULL OR i.owner_business_unit_id = $2)
           AND ($3 OR i.is_active)
         ORDER BY i.name LIMIT 500`,
       [q.q || null, q.businessUnitId ?? null, q.includeInactive === 'true'])).rows);

@@ -77,6 +77,8 @@ Password hashes are stripped from snapshots.
   Each has an owner — the group (`owner_business_unit_id` NULL, managed by holders of `tenant.settings`)
   or one unit (managed by that unit's CFG writers). So the Spa Partner can maintain Spa products,
   and nobody else can rename them.
+- A unit can only use **group items and its own items** — never another unit's
+  (`inv.business_unit_item_check_owner`). The Catalogue lists only those items for the selected unit.
 - What a unit does with a shared record is private to the unit: `business_unit_item` (selling price,
   reorder level — CFG) and `business_unit_supplier` (account number, payment terms — FIN).
 - Batch and expiry tracking are fixed when an item is created; changing them later would invalidate

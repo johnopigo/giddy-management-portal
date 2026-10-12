@@ -100,6 +100,20 @@ CREATE TABLE business_unit_item (
   FOREIGN KEY (item_id, tenant_id) REFERENCES item(id, tenant_id)
 );
 
+-- A unit may use group items and its own items, never another unit's.
+CREATE FUNCTION inv.business_unit_item_check_owner() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM item WHERE id = NEW.item_id
+             AND owner_business_unit_id IS NOT NULL AND owner_business_unit_id <> NEW.business_unit_id) THEN
+    RAISE EXCEPTION 'this item belongs to another business unit and cannot be used here'
+      USING ERRCODE = 'check_violation';
+  END IF;
+  RETURN NEW;
+END $$;
+CREATE TRIGGER business_unit_item_check_owner BEFORE INSERT OR UPDATE ON business_unit_item
+  FOR EACH ROW EXECUTE FUNCTION inv.business_unit_item_check_owner();
+
 -- =====================================================================
 -- Suppliers
 -- =====================================================================

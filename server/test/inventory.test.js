@@ -46,6 +46,15 @@ test('items: group items are managed by the owner, unit items by that unit', asy
   assert.equal((await partner.patch(`/api/catalog/items/${oil.id}`, { name: 'Massage oil (lavender)', rowVersion: oil.row_version })).status, 200);
 });
 
+test("a unit cannot use another unit's item", async () => {
+  const res = await owner.put(`/api/catalog/items/${oil.id}/units/${seed.units.FNB}`, { sellPrice: 9000 });
+  assert.equal(res.status, 400);
+  assert.match(res.body.error, /belongs to another business unit/);
+  const fnbItems = (await owner.get(`/api/catalog/items?businessUnitId=${seed.units.FNB}`)).body;
+  assert.ok(!fnbItems.some((i) => i.id === oil.id), 'Spa items are not listed for F&B');
+  assert.ok(fnbItems.some((i) => i.id === water.id), 'group items are');
+});
+
 test('locations follow the Branch → Department → Staff hierarchy', async () => {
   const cashier = await staffMember(owner, { email: 'cashier@test.local', role: 'STAFF', businessUnitId: seed.units.FNB });
   const wrong = await owner.post(`${FNB()}/locations`, {
