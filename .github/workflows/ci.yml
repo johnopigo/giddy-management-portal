@@ -1,0 +1,55 @@
+# Runs every test against a real PostgreSQL, builds the web app and the Docker image.
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      PGHOST: localhost
+      PGUSER: postgres
+      PGPASSWORD: postgres
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Create the test database and its roles
+        run: DB_NAME=giddy_test bash server/scripts/db-setup.sh
+      - name: Server tests
+        run: npm test -w server
+      - name: Web tests
+        run: npm test -w web
+      - name: Web build
+        run: npm run build
+
+  docker:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build the production image
+        run: docker build -t giddy-portal:ci .
+      - name: The image refuses an unsafe production configuration
+        run: |
+          if docker run --rm -e RUN_MIGRATIONS=false -e DATABASE_OWNER_URL=postgres://x:change-me@db/giddy \
+               -e DATABASE_APP_URL=postgres://y:change-me@db/giddy giddy-portal:ci; then
+            echo "expected the container to refuse to start"; exit 1
+          fi

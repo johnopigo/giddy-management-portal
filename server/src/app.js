@@ -29,6 +29,8 @@ import { bookingRoutes } from './routes/bookings.js';
 import { partnershipRoutes } from './routes/partnership.js';
 import { publicRoutes } from './routes/public.js';
 import { reportRoutes } from './routes/reports.js';
+import path from 'node:path';
+import { getAppPool } from './db/pool.js';
 
 export function createApp() {
   const app = express();
@@ -46,6 +48,15 @@ export function createApp() {
   app.use('/api', requireCsrfHeader);
 
   app.get('/api/health', (req, res) => res.json({ ok: true }));
+  // Ready = the database answers (for load balancers and container orchestration).
+  app.get('/api/ready', async (req, res) => {
+    try {
+      await getAppPool().query('SELECT 1');
+      res.json({ ok: true });
+    } catch {
+      res.status(503).json({ ok: false });
+    }
+  });
   app.use('/api/auth', authenticate, authRoutes());
   // Public booking pages: no login (see routes/public.js).
   app.use('/api/public', publicRoutes());
@@ -77,6 +88,14 @@ export function createApp() {
   app.use('/api', authed);
 
   app.use('/api', notFoundHandler);
+
+  // Production: the built web app, with the SPA's own routes falling back to index.html.
+  if (config.webDist) {
+    const dist = path.resolve(config.webDist);
+    app.use('/assets', express.static(path.join(dist, 'assets'), { immutable: true, maxAge: '365d', index: false }));
+    app.use(express.static(dist, { index: false, maxAge: '1h' }));
+    app.get(/^(?!\/api\/).*/, (req, res) => res.set('cache-control', 'no-cache').sendFile(path.join(dist, 'index.html')));
+  }
   app.use(errorHandler);
   return app;
 }

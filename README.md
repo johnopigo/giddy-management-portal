@@ -52,7 +52,8 @@ Open http://localhost:5173 and sign in as `owner@giddy.local`, `it@giddy.local` 
 The public booking site is at `/book/<address>` (the address is shown on the Organisation page). A unit appears there
 once its managers set `online.enabled` to `true` in its settings. For real payments set `PAYSTACK_SECRET_KEY`
 (`sk_test_…` while testing, `sk_live_…` when live) and `PUBLIC_URL`, and in the Paystack dashboard set the webhook URL
-to `<your API address>/api/public/paystack/webhook`. Without a key, development uses a built-in test gateway (no money moves).
+to `<your API address>/api/public/paystack/webhook`. Without a key, development uses a built-in test gateway (no money moves)
+when `PAYMENTS_TEST_MODE=true` (set in `.env.example`; refused in production).
 
 ## Tests
 
@@ -79,4 +80,10 @@ file. They exercise the real database rules through the HTTP API.
 | 11 | Partnership settlements: agreed terms (blank until known), monthly statements, accrual and payment | **Done** |
 | 12–13 | Online booking portals (rooms, Spa, Studio) with Paystack deposits, holds and the guest's booking page | **Done** |
 | 14 | Reports and group dashboard: revenue, margin, takings, open bills, stock value, occupancy, appointments, best sellers, CSV | **Done** |
-| 15–16 | Hardening, migration, go-live | Next |
+| 15–16 | Hardening (security review fixes), Docker deployment, backups, production setup, data import, CI, go-live checklist | **Done** |
+
+## Going live
+
+- [docs/deployment.md](docs/deployment.md): the server, Docker, HTTPS, first setup, backups, updates
+- [docs/data-import.md](docs/data-import.md): bringing in existing customers, suppliers, items, rooms and stock
+- [docs/go-live-checklist.md](docs/go-live-checklist.md): everything to tick off before opening the doors

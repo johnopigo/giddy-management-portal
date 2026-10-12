@@ -1,0 +1,3 @@
+sku,unit,sell_price,reorder_level,reorder_qty
+WATER-75CL,FNB,800,24,48
+RICE-50KG,FNB,,2,4
