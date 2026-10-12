@@ -6,6 +6,7 @@ import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
 import { resetDatabase, signIn, closePools, ownerQuery, request, app, roleIdByCode } from './helpers.js';
 import { config } from '../src/config.js';
+import { hashToken } from '../src/auth/tokens.js';
 
 let seed, owner, partner, it, slug;
 let std, massage, booth, spaGuestToken;
@@ -204,6 +205,116 @@ test('Paystack webhook: only correctly signed events count, and the amount must 
   } finally {
     config.paystackSecretKey = '';
   }
+});
+
+// Requests from a given network address (the app trusts one proxy hop, as behind Caddy).
+const from = (ip) => ({
+  get: (url) => request(app).get(`/api/public${url}`).set('x-forwarded-for', ip),
+  post: (url, body) => request(app).post(`/api/public${url}`).set('x-requested-with', 'giddy').set('x-forwarded-for', ip).send(body ?? {}),
+});
+const stay = (g, checkIn, nights = 1) => ({ unitId: seed.units.APARTMENTS, roomTypeId: std.id, checkIn: day(checkIn), checkOut: day(checkIn + nights), guest: g });
+
+test('details typed online never reveal what is stored about a customer', async () => {
+  await owner.post('/api/customers', { fullName: 'Chief Bisi Adewale', phone: '08031112222', email: 'bisi@example.com' });
+  const web = from('192.0.2.10');
+  const r = (await web.post(`/${slug}/rooms`, stay({ fullName: 'Someone Else', phone: '08031112222', email: 'other@example.com' }, 40))).body;
+  const m = (await web.get(`/manage/${r.token}`)).body;
+  assert.equal(m.guestName, 'Someone Else', 'the page shows what was typed, not the stored name');
+  assert.ok(!JSON.stringify(m).includes('Bisi'));
+  const row = (await ownerQuery('SELECT guest_email, details_differ FROM online_booking WHERE manage_token_hash = $1', [hashToken(r.token)])).rows[0];
+  assert.deepEqual([row.guest_email, row.details_differ], ['other@example.com', true], 'receipts go to the address typed; staff are asked to check');
+  const paid = await pay(r.token, r.paymentUrl);
+  assert.equal(paid.body.paymentStatus, 'paid');
+  const note = (await owner.get('/api/notifications')).body.items.find((n) => n.body?.startsWith(r.bookingRef));
+  assert.match(note.body, /differ from the customer record/);
+  // The same person typing the same details is not flagged.
+  const same = (await from('192.0.2.11').post(`/${slug}/rooms`, stay({ fullName: 'Chief Bisi Adewale', phone: '08031112222', email: 'bisi@example.com' }, 42))).body;
+  assert.equal((await ownerQuery('SELECT details_differ FROM online_booking WHERE manage_token_hash = $1', [hashToken(same.token)])).rows[0].details_differ, false);
+});
+
+test('limits: unpaid bookings per guest and per address, stay length and how far ahead', async () => {
+  const web = from('192.0.2.20');
+  assert.equal((await web.post(`/${slug}/rooms`, stay(guest(21), 50))).status, 201);
+  assert.equal((await web.post(`/${slug}/rooms`, stay(guest(22), 52))).status, 201);
+  const third = await web.post(`/${slug}/rooms`, stay(guest(23), 54));
+  assert.equal(third.status, 429, 'a third unpaid booking from the same address waits');
+  assert.match(third.body.error, /unpaid online bookings/);
+  assert.equal((await from('192.0.2.21').post(`/${slug}/rooms`, stay(guest(21), 56))).status, 201);
+  assert.equal((await from('192.0.2.22').post(`/${slug}/rooms`, stay(guest(21), 58))).status, 429, 'nor from the same guest elsewhere');
+  const long = await from('192.0.2.23').post(`/${slug}/rooms`, stay(guest(24), 60, 31));
+  assert.equal(long.status, 400);
+  assert.match(long.body.error, /more than 30 nights/);
+  const far = await from('192.0.2.23').post(`/${slug}/rooms`, stay(guest(24), 400));
+  assert.equal(far.status, 400);
+  assert.match(far.body.error, /365 days ahead/);
+  const appt = await from('192.0.2.23').post(`/${slug}/units/${seed.units.STUDIO}/appointments`,
+    { serviceId: booth.id, startsAt: `${day(400)}T10:00:00+01:00`, slots: 1, guest: guest(24) });
+  assert.equal(appt.status, 400);
+  // Free bookings (no deposit) count too, so nobody can fill the Studio diary for nothing.
+  const studio = from('192.0.2.24');
+  const book = (h) => studio.post(`/${slug}/units/${seed.units.STUDIO}/appointments`,
+    { serviceId: booth.id, startsAt: `${day(20)}T${h}:00:00+01:00`, slots: 1, guest: guest(25) });
+  assert.equal((await book(10)).status, 201);
+  assert.equal((await book(12)).status, 201);
+  assert.equal((await book(14)).status, 429);
+});
+
+test('a unit holds only so many unpaid bookings at once; nothing is held when payments are off', async () => {
+  await ownerQuery(`UPDATE business_unit_setting SET value = '0' WHERE business_unit_id = $1 AND key = 'online.max_unpaid_holds'`, [seed.units.APARTMENTS]);
+  try {
+    const busy = await from('192.0.2.30').post(`/${slug}/rooms`, stay(guest(26), 70));
+    assert.equal(busy.status, 503);
+    assert.match(busy.body.error, /busy/);
+  } finally {
+    await ownerQuery(`UPDATE business_unit_setting SET value = '20' WHERE business_unit_id = $1 AND key = 'online.max_unpaid_holds'`, [seed.units.APARTMENTS]);
+  }
+  const before = Number((await ownerQuery('SELECT count(*) FROM reservation')).rows[0].count);
+  config.paymentsTestMode = false;
+  try {
+    assert.equal((await from('192.0.2.31').get(`/${slug}`)).body.gateway, 'none');
+    const off = await from('192.0.2.31').post(`/${slug}/rooms`, stay(guest(26), 72));
+    assert.equal(off.status, 503);
+    assert.equal(Number((await ownerQuery('SELECT count(*) FROM reservation')).rows[0].count), before, 'no room was held');
+  } finally {
+    config.paymentsTestMode = true;
+  }
+});
+
+test('paying twice: one payment page per booking, and a payment on an older page still counts', async () => {
+  const web = from('192.0.2.40');
+  const r = (await web.post(`/${slug}/rooms`, stay(guest(27), 80))).body;
+  const again = (await web.post(`/manage/${r.token}/pay`)).body.paymentUrl;
+  assert.equal(again, r.paymentUrl, 'clicking Pay again reopens the same payment');
+  // A fresh page is started (as when the first could not be reused), then the guest pays the first one.
+  await ownerQuery(`UPDATE online_payment_attempt SET payment_url = NULL WHERE reference = $1`, [refOf(r.paymentUrl)]);
+  const second = (await web.post(`/manage/${r.token}/pay`)).body.paymentUrl;
+  assert.notEqual(refOf(second), refOf(r.paymentUrl));
+  const paid = await pay(r.token, r.paymentUrl);
+  assert.equal(paid.body.paymentStatus, 'paid', 'the older reference is still this booking’s');
+  // And if the second page is paid as well, the staff are told to refund it.
+  const dup = await pay(r.token, second);
+  assert.equal(dup.body.paymentStatus, 'paid');
+  assert.ok((await owner.get('/api/notifications')).body.items.some((n) => n.title === 'Duplicate online payment: refund due'));
+  // A reference from another booking is refused.
+  const other = (await from('192.0.2.41').post(`/${slug}/rooms`, stay(guest(28), 84))).body;
+  assert.equal((await web.post(`/manage/${r.token}/verify`, { reference: refOf(other.paymentUrl) })).status, 400);
+});
+
+test('the access log never records a guest\'s secret link', async () => {
+  const r = (await from('192.0.2.50').post(`/${slug}/rooms`, stay(guest(29), 90))).body;
+  const lines = [];
+  const log = console.log;
+  process.env.ACCESS_LOG = 'true';
+  console.log = (line) => lines.push(String(line));
+  try {
+    await from('192.0.2.50').get(`/manage/${r.token}`);
+    await from('192.0.2.50').get(`/test-payments/${refOf(r.paymentUrl)}`);
+  } finally {
+    console.log = log;
+    delete process.env.ACCESS_LOG;
+  }
+  const paths = lines.map((l) => JSON.parse(l).path);
+  assert.deepEqual(paths, ['/api/public/manage/…', '/api/public/test-payments/…']);
 });
 
 test('every change is in the audit chain', async () => {

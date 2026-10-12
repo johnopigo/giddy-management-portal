@@ -23,18 +23,21 @@ export function authRoutes() {
 
   router.post('/login', loginLimiter, async (req, res) => {
     const { email, password } = parse(loginSchema, req.body);
+    const ip = req.ip ?? null;
     const result = await req.db(async (c) => {
+      // Repeated failures for an email from one address (or very many from anywhere) pause sign-in
+      // for that email from there, whether or not it is an account; other people are not locked out.
+      if ((await c.query('SELECT sec.auth_throttled($1, $2::inet) AS t', [email, ip])).rows[0].t) {
+        return { error: new HttpError(429, 'Too many failed sign-ins. Wait 15 minutes and try again, or ask an administrator to reset your password.') };
+      }
       const { rows } = await c.query('SELECT * FROM sec.auth_lookup($1)', [email]);
       const user = rows[0];
       const ok = await verifyPassword(password, user?.password_hash ?? DUMMY_HASH);
-      if (!user) return { error: unauthorized('Email or password is incorrect.') };
-      if (user.lockout_until && new Date(user.lockout_until) > new Date()) {
-        return { error: new HttpError(423, 'Account is temporarily locked after repeated failed sign-ins. Try again later.') };
-      }
-      if (!ok || !user.is_active) {
-        await c.query('SELECT sec.auth_login_failed($1)', [user.user_id]);
+      if (!user || !ok || !user.is_active) {
+        await c.query('SELECT sec.auth_record_failure($1, $2::inet, $3)', [email, ip, user?.user_id ?? null]);
         return { error: unauthorized('Email or password is incorrect.') };
       }
+      await c.query('SELECT sec.auth_clear_failures($1, $2::inet)', [email, ip]);
       const token = newSessionToken();
       await c.query('SELECT sec.auth_login_succeeded($1, $2, $3::interval, $4::inet, $5)', [
         user.user_id, hashToken(token), `${config.sessionTtlHours} hours`, req.ip ?? null,

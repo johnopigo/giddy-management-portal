@@ -5,6 +5,11 @@ import { bootstrapTenant } from '../src/db/bootstrap.js';
 
 const DEV_PASSWORD = process.env.SEED_PASSWORD ?? 'GiddyDev2026';
 
+if (config.isProduction) {
+  console.error('The development seed (with its shared password) cannot run in production. Use the setup-tenant script (see docs/deployment.md).');
+  process.exit(2);
+}
+
 const client = new pg.Client({ connectionString: config.ownerDatabaseUrl });
 await client.connect();
 try {

@@ -1,0 +1,4 @@
+sku,name,uom,category,owner_unit,stockable,sellable
+WATER-75CL,Bottled water 75cl,each,Drinks,FNB,yes,yes
+RICE-50KG,Rice (50kg bag),bag,Dry store,FNB,yes,no
+OIL-LAV,Lavender massage oil,ml,Spa supplies,SPA,yes,no

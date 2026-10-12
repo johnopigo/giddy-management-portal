@@ -1,0 +1,56 @@
+# Self-hosted production: PostgreSQL, the portal, and Caddy (automatic HTTPS) on one machine.
+#   cp ops/production.env.example .env.production   # then fill it in
+#   docker compose --env-file .env.production up -d --build
+# See docs/deployment.md.
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+      DB_NAME: giddy
+      OWNER_PW: ${DB_OWNER_PASSWORD:?set DB_OWNER_PASSWORD}
+      APP_PW: ${DB_APP_PASSWORD:?set DB_APP_PASSWORD}
+      TZ: Africa/Lagos
+    volumes:
+      - db-data:/var/lib/postgresql/data
+      # Creates the giddy database and its two roles on first start.
+      - ./server/scripts/db-setup.sh:/docker-entrypoint-initdb.d/10-giddy.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      retries: 10
+
+  app:
+    build: .
+    image: giddy-portal:latest
+    restart: unless-stopped
+    depends_on:
+      db: { condition: service_healthy }
+    environment:
+      DATABASE_OWNER_URL: postgres://giddy_owner:${DB_OWNER_PASSWORD}@db:5432/giddy
+      DATABASE_APP_URL: postgres://giddy_app:${DB_APP_PASSWORD}@db:5432/giddy
+      PUBLIC_URL: https://${DOMAIN:?set DOMAIN}
+      WEB_ORIGIN: https://${DOMAIN}
+      COOKIE_SECURE: "true"
+      SESSION_TTL_HOURS: ${SESSION_TTL_HOURS:-12}
+      PAYSTACK_SECRET_KEY: ${PAYSTACK_SECRET_KEY:-}
+      TZ: Africa/Lagos
+    expose: ["4000"]
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on: [app]
+    ports: ["80:80", "443:443"]
+    environment:
+      DOMAIN: ${DOMAIN}
+    volumes:
+      - ./ops/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+
+volumes:
+  db-data:
+  caddy-data:
+  caddy-config:

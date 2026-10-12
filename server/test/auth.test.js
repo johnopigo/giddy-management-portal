@@ -22,11 +22,17 @@ test('state-changing requests without the CSRF header are rejected', async () =>
   assert.equal(res.status, 403);
 });
 
-test('wrong password returns 401 and the account locks after 5 failures', async () => {
-  const attempt = (password) => request(app).post('/api/auth/login')
-    .set('x-requested-with', 'giddy').send({ email: 'it@test.local', password });
-  for (let i = 0; i < 5; i++) assert.equal((await attempt('wrong-password-1')).status, 401);
-  assert.equal((await attempt(PASSWORD)).status, 423, 'even the right password is refused while locked');
+test('after 5 failures sign-in pauses for that email from that address only, account or not', async () => {
+  const attempt = (email, password, ip = '203.0.113.7') => request(app).post('/api/auth/login')
+    .set('x-requested-with', 'giddy').set('x-forwarded-for', ip).send({ email, password });
+  for (let i = 0; i < 5; i++) assert.equal((await attempt('it@test.local', 'wrong-password-1')).status, 401);
+  assert.equal((await attempt('it@test.local', PASSWORD)).status, 429, 'even the right password waits from that address');
+  assert.equal((await attempt('it@test.local', PASSWORD, '198.51.100.9')).status, 204, 'the real user elsewhere is not locked out');
+  // An email with no account behaves exactly the same, so the pause reveals nothing.
+  for (let i = 0; i < 5; i++) assert.equal((await attempt('nobody@test.local', 'wrong-password-1')).status, 401);
+  const unknown = await attempt('nobody@test.local', 'wrong-password-1');
+  const known = await attempt('it@test.local', 'wrong-password-1');
+  assert.deepEqual([unknown.status, unknown.body.error], [known.status, known.body.error]);
 });
 
 test('unknown email gets the same 401 as a wrong password', async () => {

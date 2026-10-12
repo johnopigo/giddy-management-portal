@@ -11,6 +11,8 @@ export async function migrate(connectionString = config.ownerDatabaseUrl, log = 
   const client = new pg.Client({ connectionString });
   await client.connect();
   try {
+    // One migrator at a time, even when several instances start together.
+    await client.query("SELECT pg_advisory_lock(hashtext('giddy:migrate'))");
     await client.query(`CREATE TABLE IF NOT EXISTS schema_migration (
       name text PRIMARY KEY, applied_at timestamptz NOT NULL DEFAULT now())`);
     const applied = new Set((await client.query('SELECT name FROM schema_migration')).rows.map((r) => r.name));

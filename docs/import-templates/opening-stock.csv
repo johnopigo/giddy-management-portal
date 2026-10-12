@@ -1,0 +1,3 @@
+unit,location,sku,qty,unit_cost,batch_no,expiry_date
+FNB,Main store,WATER-75CL,120,450,,
+FNB,Main store,RICE-50KG,4,62000,,

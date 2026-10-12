@@ -62,7 +62,9 @@ CREATE POLICY x_write ON x FOR ALL    USING (... sec.has_scope(business_unit_id,
 - Restricted roles (System Owner, Business Partner, Group Auditor) can only be granted or revoked
   by the System Owner. Holders of restricted roles are **protected accounts**: only the System Owner can
   reset their password, change their email, deactivate them or end their sessions.
-- Accounts lock for 15 minutes after 5 failed sign-ins.
+- Sign-in pauses for 15 minutes after 5 failed attempts for an email from one network address, or 50 from anywhere.
+  The real person can still sign in from elsewhere, and the response is the same whether or not the email has an
+  account (stage 15; previously the whole account locked, which let anyone lock anyone out).
 - Sessions are stored as SHA-256 hashes and are reachable only through `SECURITY DEFINER` functions.
 
 ## Audit log
@@ -413,8 +415,21 @@ Each step notifies the other side. Every change is in the audit log.
 |---|---|
 | `online.enabled` | off by default |
 | `online.deposit_pct` | stays: % of the stay with service charge and VAT; default 100. Treatments use the service's deposit % |
-| `online.hold_minutes` | how long an unpaid booking is held; default 30 |
+| `online.hold_minutes` | how long an unpaid booking is held; default 15 |
 | `online.cancel_hours` | online cancellation closes this many hours before the start; default 24 |
+| `online.max_open_per_guest` | unpaid online bookings (held, or free and still to come) one guest — by email, phone or network address — may have open; default 2 |
+| `online.max_unpaid_holds` | unpaid holds the unit keeps at once; beyond it the page says "busy, try again"; default 20 |
+| `online.max_nights` | longest stay bookable online; default 30 |
+| `online.max_days_ahead` | how far ahead guests can book online; default 365 |
+
+**Abuse limits** (stage 15). Without them anyone could hold every room for free. Besides the settings above:
+- a booking that needs a deposit is refused before anything is held when online payment is not available;
+- the public pages allow 20 bookings a minute per address.
+
+**Guests' details are not trusted.** A phone number or email belongs to one customer, so an online booking joins the
+customer that has it. But the booking keeps the name, email and phone **as typed**: the guest's page shows those,
+and payment receipts go to the typed email. Nothing stored about a customer is ever shown on a public page. When the
+details only partly match the customer record, staff are told to check them with the guest.
 
 **Deposits:**
 1. A booking that needs a deposit is created at once (so nobody else can take the room or slot) and **held**.
@@ -427,15 +442,20 @@ Each step notifies the other side. Every change is in the audit log.
 5. Holds not paid in time are released by a sweep (every minute, and on each public request). The booking is cancelled
    with the reason recorded.
 6. A payment that arrives after its hold was released is recorded, and staff are told to refund or rebook.
+7. Every payment page started for a booking is kept (`online_payment_attempt`), and clicking *Pay* again reopens the
+   same page. Paying any of a booking's pages settles it; paying a second page as well is recorded and staff are
+   told to refund it.
 
 **The guest's booking page** (`/book/manage/<secret link>`; only a hash of the token is stored) shows the booking and
 offers *Pay* while held.
 - **Cancel** while nothing is paid: a held booking any time, otherwise only before the cutoff.
 - **Ask to cancel** once paid: staff decide on the refund and are notified.
 
-**Without a Paystack key** (development and tests only), a built-in test gateway stands in: a page in the app says
+**Without a Paystack key**, and only when `PAYMENTS_TEST_MODE=true` outside production, a built-in test gateway stands in: a page in the app says
 "test payment" and lets you pay or decline; no money moves. In production, online payments refuse to start without
 `PAYSTACK_SECRET_KEY`. `PUBLIC_URL` is the address Paystack returns guests to.
+
+**Logs:** the access log never records the secret part of a guest's booking link or a payment reference.
 
 ## Reports and the group dashboard
 
@@ -472,6 +492,18 @@ reader's own access. A unit appears only if they may read its finances, so:
 
 **The dashboard** shows *Today across your units* (revenue, takings, open bills, rooms occupied, appointments) to
 anyone who can read finances.
+
+## Production (stage 15–16)
+
+- One Docker image serves the API and the built web app; Caddy in front provides HTTPS. Database updates run at start,
+  under a lock so several copies can start together. `/api/ready` reports whether the database is reachable.
+- Production refuses to start with unsafe settings (no HTTPS address, insecure cookies, default database passwords,
+  the test payment gateway switched on).
+- Helper functions the API role can call (balances, rates, settings, partnership terms) answer only for the caller's
+  own tenant, so they are safe even if called with another tenant's ids.
+- The first tenant is created by `setup-tenant.js` with one-time passwords; existing records come in through
+  `import.js`, which uses the API as a named staff member. See [deployment.md](deployment.md) and
+  [data-import.md](data-import.md).
 
 ## Open decisions
 

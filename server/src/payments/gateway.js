@@ -39,8 +39,8 @@ const paystack = {
 };
 
 /**
- * A stand-in for development and tests: the guest is sent to a page in this app that says
- * "test payment" and lets them pay or decline. The outcome is stored on the booking.
+ * A stand-in for development and tests (PAYMENTS_TEST_MODE=true, never in production): the guest
+ * is sent to a page in this app that says "test payment" and lets them pay or decline. The outcome is stored on the booking.
  */
 const testGateway = {
   name: 'test',
@@ -48,7 +48,7 @@ const testGateway = {
     return { url: `${config.publicUrl}/book/pay/${encodeURIComponent(reference)}` };
   },
   async verify(reference, booking) {
-    const outcome = booking?.gateway_data?.test_outcome;
+    const outcome = booking?.gateway_data?.test_outcomes?.[reference];
     if (!outcome) return { status: 'pending' };
     return { status: outcome, amount: Number(booking.amount_due), currency: booking.currency };
   },
@@ -57,10 +57,11 @@ const testGateway = {
 
 export function gateway() {
   if (config.paystackSecretKey) return paystack;
-  if (config.isProduction) throw new HttpError(503, 'Online payments are not set up yet.');
-  return testGateway;
+  if (config.paymentsTestMode) return testGateway;
+  throw new HttpError(503, 'Online payments are not set up yet. Please call us to book.');
 }
 
+/** 'paystack', 'test' (only with PAYMENTS_TEST_MODE=true outside production) or 'none'. */
 export function gatewayName() {
-  return config.paystackSecretKey ? 'paystack' : config.isProduction ? 'none' : 'test';
+  return config.paystackSecretKey ? 'paystack' : config.paymentsTestMode ? 'test' : 'none';
 }
