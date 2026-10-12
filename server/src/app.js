@@ -1,0 +1,43 @@
+import express from 'express';
+import helmet from 'helmet';
+import cookieParser from 'cookie-parser';
+import rateLimit from 'express-rate-limit';
+import { config } from './config.js';
+import { requestContext, authenticate, requireAuth, requireCsrfHeader } from './middleware/context.js';
+import { errorHandler, notFoundHandler } from './middleware/errors.js';
+import { authRoutes } from './routes/auth.js';
+import { meRoutes } from './routes/me.js';
+import { orgRoutes } from './routes/org.js';
+import { userRoutes } from './routes/users.js';
+import { roleRoutes } from './routes/roles.js';
+import { assignmentRoutes } from './routes/assignments.js';
+import { auditRoutes } from './routes/audit.js';
+
+export function createApp() {
+  const app = express();
+  app.set('trust proxy', 1);
+  app.disable('x-powered-by');
+  app.use(helmet());
+  app.use(express.json({ limit: '200kb' }));
+  app.use(cookieParser());
+  app.use(rateLimit({ windowMs: 60_000, limit: config.isTest ? 100_000 : 600, standardHeaders: 'draft-8', legacyHeaders: false }));
+  app.use(requestContext);
+  app.use('/api', requireCsrfHeader);
+
+  app.get('/api/health', (req, res) => res.json({ ok: true }));
+  app.use('/api/auth', authenticate, authRoutes());
+
+  const authed = express.Router();
+  authed.use(authenticate, requireAuth);
+  authed.use('/me', meRoutes());
+  authed.use('/org', orgRoutes());
+  authed.use('/users', userRoutes());
+  authed.use('/roles', roleRoutes());
+  authed.use('/assignments', assignmentRoutes());
+  authed.use('/audit', auditRoutes());
+  app.use('/api', authed);
+
+  app.use('/api', notFoundHandler);
+  app.use(errorHandler);
+  return app;
+}

@@ -1,0 +1,25 @@
+{
+  "name": "@giddy/server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "src/index.js",
+  "scripts": {
+    "dev": "node --watch --env-file-if-exists=../.env src/index.js",
+    "start": "node --env-file-if-exists=../.env src/index.js",
+    "migrate": "node --env-file-if-exists=../.env src/db/migrate.js",
+    "seed": "node --env-file-if-exists=../.env scripts/seed.js",
+    "test": "NODE_ENV=test node --env-file-if-exists=../.env --test --test-concurrency=1 'test/**/*.test.js'"
+  },
+  "dependencies": {
+    "cookie-parser": "^1.4.7",
+    "express": "^5.1.0",
+    "express-rate-limit": "^8.1.0",
+    "helmet": "^8.1.0",
+    "pg": "^8.16.0",
+    "zod": "^4.1.0"
+  },
+  "devDependencies": {
+    "supertest": "^7.1.0"
+  }
+}

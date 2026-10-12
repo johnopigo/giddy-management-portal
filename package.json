@@ -1,0 +1,14 @@
+{
+  "name": "giddy-management-portal",
+  "private": true,
+  "workspaces": ["server", "web"],
+  "scripts": {
+    "dev:server": "npm run dev -w server",
+    "dev:web": "npm run dev -w web",
+    "migrate": "npm run migrate -w server",
+    "seed": "npm run seed -w server",
+    "test": "npm test -w server && npm test -w web",
+    "build": "npm run build -w web"
+  },
+  "engines": { "node": ">=22" }
+}
