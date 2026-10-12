@@ -8,7 +8,7 @@ let appPool;
 
 /** Pool for request handling. Connects as giddy_app, so row-level security always applies. */
 export function getAppPool() {
-  appPool ??= new pg.Pool({ connectionString: config.appDatabaseUrl, max: 20 });
+  appPool ??= new pg.Pool({ connectionString: config.appDatabaseUrl, max: config.dbPoolMax });
   return appPool;
 }
 

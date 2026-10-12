@@ -1,3 +1,10 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+// The built web app inside this repository (web/dist), used in production when WEB_DIST is not set.
+const bundledWeb = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../web/dist');
+
 function required(name) {
   const value = process.env[name];
   if (!value) throw new Error(`Missing required environment variable ${name}`);
@@ -6,7 +13,10 @@ function required(name) {
 
 export const config = {
   // The built web app (web/dist) is served by the API when this is set (production: one service, one address).
-  webDist: process.env.WEB_DIST ?? '',
+  webDist: process.env.WEB_DIST
+    ?? (process.env.NODE_ENV === 'production' && fs.existsSync(path.join(bundledWeb, 'index.html')) ? bundledWeb : ''),
+  // Database connections per process (a managed database's plan may limit the total).
+  dbPoolMax: Number(process.env.DB_POOL_MAX ?? 20),
   // Apply pending database migrations at startup (safe with several instances: they take a lock).
   runMigrations: process.env.RUN_MIGRATIONS === 'true',
   get ownerDatabaseUrl() { return required('DATABASE_OWNER_URL'); },
