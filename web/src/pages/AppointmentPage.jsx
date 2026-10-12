@@ -9,6 +9,7 @@ import { formatMoney } from '../components/UnitPicker.jsx';
 import { formatDuration, localDate, localTime, longDate, todayIn } from '../lib/time.js';
 import { APPT_STATUS, DEFAULT_TZ, TimeChooser, lengthLabel } from './AppointmentsPage.jsx';
 import { AppointmentBill } from '../components/AppointmentBill.jsx';
+import { ClientRecord } from '../components/ClientRecord.jsx';
 
 export function AppointmentPage() {
   const { unitId, id } = useParams();
@@ -81,6 +82,9 @@ export function AppointmentPage() {
           </div>
         )}
       </section>
+      {(a.requires_intake || me.scope.find((u) => u.business_unit_id === unitId)?.unit_type === 'spa') && (
+        <ClientRecord unitId={unitId} appt={a} onChanged={appt.reload} />
+      )}
       {a.bill && <AppointmentBill unitId={unitId} appt={a} onChanged={appt.reload} />}
       {moving && a.status === 'booked' && (
         <MovePanel appt={a} unitId={unitId} tz={tz} service={service}

@@ -9,7 +9,7 @@ One web platform for the four businesses at Giddy Luxury Apartments:
 | Content Studio | Owner | Booths rented by the hour |
 | Spa | **Partnership** | Treatments with a therapist and room |
 
-The Owner has full control of the three owner-managed units and a **read-only** view of the Spa.
+The Owner has full control of the three owner-managed units and sees **everything** in the Spa, read-only (health records included; every view is logged).
 The Spa Partner has full control of the Spa and **no access** to the other units.
 IT manages user accounts everywhere but sees **no business data**.
 
@@ -68,8 +68,8 @@ file. They exercise the real database rules through the HTTP API.
 | 6–7 | Luxury Apartments: rooms, reservations, folios, housekeeping, charge-to-room | **Done** |
 | 8 | Booking engine (service-based and slot-based) | **Done** |
 | 9 | Content Studio booth rentals: deposits, add-ons, bills, extending | **Done** |
-| 10 | Spa operations | Next |
-| 11 | Partnership settlements | |
+| 10 | Spa: intake forms, treatment notes, intake required before treatment | **Done** |
+| 11 | Partnership settlements | Next |
 | 12–13 | Online booking portals with Paystack | |
 | 14 | Reports and group dashboard | |
 | 15–16 | Hardening, migration, go-live | |

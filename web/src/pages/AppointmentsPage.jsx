@@ -507,7 +507,8 @@ function Setup({ unitId, setup, unitType, onChange }) {
               {setup.services.map((s) => (
                 <tr key={s.id} className={s.is_active ? '' : 'dim'}>
                   <td><strong>{s.name}</strong> <span className="muted small">{s.code}</span>
-                    {s.online_bookable && <div><Badge tone="accent">Online</Badge></div>}</td>
+                    {(s.online_bookable || s.requires_intake) && <div className="row">{s.online_bookable && <Badge tone="accent">Online</Badge>}
+                      {s.requires_intake && <Badge tone="warn">Intake needed</Badge>}</div>}</td>
                   <td className="small">{s.mode === 'slot'
                     ? `${formatDuration(s.duration_min)} slots, ${s.min_slots}–${s.max_slots}`
                     : formatDuration(s.duration_min)}{s.buffer_min ? ` + ${s.buffer_min} min turnaround` : ''}</td>
@@ -538,7 +539,7 @@ function ServiceForm({ unitId, unitType, resources, service, onCancel, onSaved }
     mode: service?.mode ?? (unitType === 'content_studio' ? 'slot' : 'service'),
     durationMin: service?.duration_min ?? (unitType === 'content_studio' ? 60 : 60), bufferMin: service?.buffer_min ?? 0,
     minSlots: service?.min_slots ?? 1, maxSlots: service?.max_slots ?? (unitType === 'content_studio' ? 4 : 1),
-    price: service?.price ?? '', depositPct: Number(service?.deposit_pct ?? 0), onlineBookable: service?.online_bookable ?? false, isActive: service?.is_active ?? true,
+    price: service?.price ?? '', requiresIntake: service?.requires_intake ?? (unitType === 'spa'), depositPct: Number(service?.deposit_pct ?? 0), onlineBookable: service?.online_bookable ?? false, isActive: service?.is_active ?? true,
   }));
   const [chosen, setChosen] = useState(() => Object.fromEntries((service?.resources ?? []).map((r) => [r.resourceId, r.role])));
   const [error, setError] = useState(null);
@@ -555,7 +556,7 @@ function ServiceForm({ unitId, unitType, resources, service, onCancel, onSaved }
     const body = {
       name: f.name, description: f.description, durationMin: f.durationMin, bufferMin: f.bufferMin,
       minSlots: f.mode === 'slot' ? f.minSlots : 1, maxSlots: f.mode === 'slot' ? f.maxSlots : 1,
-      price: Number(f.price), depositPct: Number(f.depositPct), onlineBookable: f.onlineBookable, isActive: f.isActive,
+      price: Number(f.price), requiresIntake: f.requiresIntake, depositPct: Number(f.depositPct), onlineBookable: f.onlineBookable, isActive: f.isActive,
       resources: Object.entries(chosen).map(([resourceId, role]) => ({ resourceId, role })),
     };
     try {
@@ -598,6 +599,7 @@ function ServiceForm({ unitId, unitType, resources, service, onCancel, onSaved }
           </div>
         ))}
       </div>
+      <label className="inline full"><input type="checkbox" checked={f.requiresIntake} onChange={set('requiresIntake')} />Needs a current intake form (health &amp; consent) before check-in</label>
       <label className="inline full"><input type="checkbox" checked={f.onlineBookable} onChange={set('onlineBookable')} />Bookable online (when the portal opens)</label>
       {editing && <label className="inline full"><input type="checkbox" checked={f.isActive} onChange={set('isActive')} />Offered</label>}
       <div className="full row">

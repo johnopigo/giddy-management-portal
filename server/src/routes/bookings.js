@@ -29,6 +29,7 @@ const serviceFields = {
   onlineBookable: z.boolean(),
   isActive: z.boolean(),
   depositPct: z.number().min(0).max(100),
+  requiresIntake: z.boolean(),
 };
 const serviceSchema = z.object({
   code: z.string().trim().toUpperCase().regex(/^[A-Z0-9_-]{2,20}$/),
@@ -40,6 +41,7 @@ const serviceSchema = z.object({
   maxSlots: serviceFields.maxSlots.default(1),
   onlineBookable: serviceFields.onlineBookable.default(false),
   depositPct: serviceFields.depositPct.default(0),
+  requiresIntake: serviceFields.requiresIntake.default(false),
   isActive: serviceFields.isActive.default(true),
   resources: serviceResources.default([]),
 });
@@ -73,6 +75,15 @@ const billPostSchema = z.object({
 const addonSchema = z.object({ itemId: z.uuid(), qty: z.number().positive().max(10000).default(1), locationId: z.uuid().nullish() });
 const voidSchema = z.object({ reason: z.string().trim().min(2).max(200) });
 const extendSchema = z.object({ slots: z.int().min(1).max(48).default(1) });
+const clientParams = z.object({ businessUnitId: z.uuid(), customerId: z.uuid() });
+const versionQuery = z.object({ version: z.coerce.number().int().min(1).optional() });
+const text = (max) => z.string().trim().max(max).default('');
+const intakeSchema = z.object({
+  healthConditions: text(2000), allergies: text(1000), medications: text(1000), pregnant: z.boolean().nullish(),
+  skinType: text(100), preferences: text(1000), emergencyContact: text(200), notes: text(2000),
+  consentGiven: z.boolean(), consentName: z.string().trim().max(120).nullish(),
+});
+const noteSchema = z.object({ body: z.string().trim().min(2).max(4000), productsUsed: text(1000), reaction: text(1000) });
 const entryParams = z.object({ businessUnitId: z.uuid(), entryId: z.coerce.number().int().positive() });
 const blockSchema = z.object({
   from: z.iso.datetime({ offset: true }), to: z.iso.datetime({ offset: true }), reason: z.string().trim().min(2).max(200),
@@ -129,7 +140,7 @@ export function bookingRoutes() {
            FROM bookable_resource r WHERE r.business_unit_id = $1 ORDER BY r.kind, r.name`, [businessUnitId])).rows,
       services: (await c.query(
         `SELECT s.id, s.code, s.name, s.description, s.mode, s.duration_min, s.buffer_min, s.min_slots, s.max_slots,
-                s.price, s.deposit_pct, s.online_bookable, s.is_active,
+                s.price, s.deposit_pct, s.requires_intake, s.online_bookable, s.is_active,
                 coalesce((SELECT jsonb_agg(jsonb_build_object('resourceId', sr.resource_id, 'role', sr.role) ORDER BY sr.role)
                             FROM service_resource sr WHERE sr.service_id = s.id), '[]') AS resources
            FROM bookable_service s WHERE s.business_unit_id = $1 ORDER BY s.name`, [businessUnitId])).rows,
@@ -206,10 +217,10 @@ export function bookingRoutes() {
     const row = await req.db(async (c) => {
       const s = (await c.query(
         `INSERT INTO bookable_service (tenant_id, business_unit_id, code, name, description, mode, duration_min, buffer_min,
-                                       min_slots, max_slots, price, online_bookable, is_active, deposit_pct)
-         VALUES (sec.current_tenant_id(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) RETURNING id, code, name, mode`,
+                                       min_slots, max_slots, price, online_bookable, is_active, deposit_pct, requires_intake)
+         VALUES (sec.current_tenant_id(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) RETURNING id, code, name, mode`,
         [businessUnitId, b.code, b.name, b.description, b.mode, b.durationMin, b.bufferMin,
-          b.mode === 'slot' ? b.minSlots : 1, b.mode === 'slot' ? b.maxSlots : 1, b.price, b.onlineBookable, b.isActive, b.depositPct])).rows[0];
+          b.mode === 'slot' ? b.minSlots : 1, b.mode === 'slot' ? b.maxSlots : 1, b.price, b.onlineBookable, b.isActive, b.depositPct, b.requiresIntake])).rows[0];
       await saveServiceResources(c, s.id, businessUnitId, b.resources);
       return s;
     });
@@ -226,10 +237,10 @@ export function bookingRoutes() {
                 min_slots = CASE WHEN mode = 'slot' THEN coalesce($7, min_slots) ELSE 1 END,
                 max_slots = CASE WHEN mode = 'slot' THEN coalesce($8, max_slots) ELSE 1 END,
                 price = coalesce($9, price), online_bookable = coalesce($10, online_bookable), is_active = coalesce($11, is_active),
-                deposit_pct = coalesce($12, deposit_pct)
+                deposit_pct = coalesce($12, deposit_pct), requires_intake = coalesce($13, requires_intake)
           WHERE id = $1 AND business_unit_id = $2`,
         [id, businessUnitId, b.name ?? null, b.description ?? null, b.durationMin ?? null, b.bufferMin ?? null,
-          b.minSlots ?? null, b.maxSlots ?? null, b.price ?? null, b.onlineBookable ?? null, b.isActive ?? null, b.depositPct ?? null])).rowCount;
+          b.minSlots ?? null, b.maxSlots ?? null, b.price ?? null, b.onlineBookable ?? null, b.isActive ?? null, b.depositPct ?? null, b.requiresIntake ?? null])).rowCount;
       if (!n) throw notFound('Service not found.');
       if (b.resources) await saveServiceResources(c, id, businessUnitId, b.resources);
     });
@@ -298,7 +309,12 @@ export function bookingRoutes() {
                 sec.user_name(a.created_by) AS created_by_name, a.created_at,
                 sec.user_name(a.checked_in_by) AS checked_in_by_name, a.checked_in_at,
                 sec.user_name(a.completed_by) AS completed_by_name, a.completed_at,
-                sec.user_name(a.cancelled_by) AS cancelled_by_name, a.cancelled_at, a.cancel_reason
+                sec.user_name(a.cancelled_by) AS cancelled_by_name, a.cancelled_at, a.cancel_reason,
+                s.requires_intake, bk.can_read_sensitive(a.business_unit_id, a.customer_id) AS can_read_sensitive,
+                sec.has_scope(a.business_unit_id, 'SEN', true) AS can_record_intake,
+                EXISTS (SELECT 1 FROM appointment_resource ar JOIN bookable_resource r ON r.id = ar.resource_id
+                         WHERE ar.appointment_id = a.id AND r.user_id = sec.current_user_id()) AS i_am_on_it,
+                (SELECT to_jsonb(i) FROM bk.intake_status(a.business_unit_id, a.customer_id) i) AS intake
            FROM appointment a JOIN bookable_service s ON s.id = a.service_id JOIN business_unit bu ON bu.id = a.business_unit_id
           WHERE a.id = $1`, [id])).rows[0];
       const bill = (await c.query(
@@ -404,6 +420,41 @@ export function bookingRoutes() {
     const { slots } = parse(extendSchema, req.body ?? {});
     await req.db(async (c) => { await inUnit(c, id, businessUnitId); await c.query('SELECT bk.extend($1, $2)', [id, slots]); });
     res.status(204).end();
+  });
+
+  // ---------------- spa: intake forms and treatment notes (sensitive; reads are audited) ----------------
+  router.get('/:businessUnitId/clients/:customerId/intake', async (req, res) => {
+    const { businessUnitId, customerId } = parse(clientParams, req.params);
+    const { version } = parse(versionQuery, req.query);
+    const row = await req.db(async (c) => (await c.query(
+      `SELECT i.*, sec.user_name(i.recorded_by) AS recorded_by_name,
+              (SELECT max(version) FROM bk.intake_status($1, $2)) AS latest_version
+         FROM bk.intake_get($1, $2, $3) i`, [businessUnitId, customerId, version ?? null])).rows[0]);
+    if (!row) throw notFound('No intake form on file.');
+    res.json(row);
+  });
+
+  router.post('/:businessUnitId/clients/:customerId/intake', async (req, res) => {
+    const { businessUnitId, customerId } = parse(clientParams, req.params);
+    const form = parse(intakeSchema, req.body);
+    const version = await req.db(async (c) => (await c.query('SELECT bk.intake_record($1, $2, $3) AS v',
+      [businessUnitId, customerId, JSON.stringify(form)])).rows[0].v);
+    res.status(201).json({ version });
+  });
+
+  router.get('/:businessUnitId/clients/:customerId/notes', async (req, res) => {
+    const { businessUnitId, customerId } = parse(clientParams, req.params);
+    res.json(await req.db(async (c) => (await c.query('SELECT * FROM bk.notes_get($1, $2)', [businessUnitId, customerId])).rows));
+  });
+
+  router.post('/:businessUnitId/appointments/:id/notes', async (req, res) => {
+    const { businessUnitId, id } = parse(idParams, req.params);
+    const b = parse(noteSchema, req.body);
+    const noteId = await req.db(async (c) => {
+      await inUnit(c, id, businessUnitId);
+      return (await c.query('SELECT bk.note_add($1, $2, $3, $4) AS id', [id, b.body, b.productsUsed, b.reaction])).rows[0].id;
+    });
+    res.status(201).json({ id: Number(noteId) });
   });
 
   return router;

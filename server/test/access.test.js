@@ -69,7 +69,7 @@ test('owner scope for a newly added owner unit is granted automatically', async 
   assert.equal(events.access.FIN, 'write');
 });
 
-test('owner never gets sensitive (SEN) access to the Spa', async () => {
+test('owner sees everything in the Spa, sensitive data included, but only reads', async () => {
   const spa = (await owner.get('/api/me')).body.scope.find((s) => s.code === 'SPA');
-  assert.deepEqual(spa.access, { OPS: 'read', FIN: 'read', CFG: 'read' });
+  assert.deepEqual(spa.access, { OPS: 'read', FIN: 'read', CFG: 'read', SEN: 'read' });
 });
