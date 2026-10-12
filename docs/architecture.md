@@ -109,7 +109,56 @@ Quantities change **only** through `inv.post_movement()`; the API role has no wr
   batch can be chosen to write off expired stock. Rows are locked in expiry order, so concurrent postings
   cannot deadlock.
 - Unit cost on movements is financial: the API returns it only to users with FIN read in the unit.
-  Full costing (weighted average from purchase receipts) arrives with procurement in stage 3.
+- Internally every quantity change goes through `inv.apply_movement` (no permission checks, not callable
+  by the API role). `inv.post_movement` (manual movements) and the document workflows below are the only
+  callers, and each checks permissions first.
+
+### Costing
+
+Moving weighted average per unit and item (`item_cost`, FIN data). An incoming movement with a cost
+(opening balance, purchase receipt, transfer in) re-averages:
+`new avg = (on hand × avg + qty × cost) / (on hand + qty)`. Every other movement is valued at the current
+average, so stock value = on hand × average.
+
+## Purchasing
+
+`draft → submitted → approved → partially_received → received`, or `closed` (short) / `cancelled`.
+All changes go through `inv.po_*` functions; the API role can only read the tables.
+
+| Step | Who |
+|---|---|
+| Draft, edit draft, submit | OPS write + FIN read (storekeeper, manager) |
+| Approve, send back (needs a reason), close short, cancel | CFG write + FIN read (manager, owner, partner) |
+| Receive goods | OPS write |
+
+- **Segregation of duties:** you cannot approve a purchase order you submitted unless you also hold
+  FIN write (the Owner, or the Partner in the Spa).
+- Receiving checks the outstanding quantity per line, needs batch/expiry for tracked items, posts a
+  `receipt` movement at the PO price and re-averages cost. Goods receipts are append-only.
+- Numbers: `PO-<UNIT>-000001`, `GRN-…`, `TRF-…`, `REQ-…` (per-unit counters).
+- Reorder suggestions: items at or below their reorder level, suggested quantity
+  `max(reorder qty, 2 × reorder level − on hand)`, with the last price and supplier.
+
+## Transfers between units
+
+The sending unit dispatches from one of its stores (`inter_unit_out` at average cost); the stock is
+in transit. The receiving unit accepts it into a store of its choice (`inter_unit_in` at the same cost,
+batches and expiry dates carried over) or refuses it with a reason, after which the sender puts it back.
+Only group items can move (unit-owned items cannot be enabled elsewhere), and the receiving unit must
+stock the item. Each side sees only its own store names.
+
+## Item requests
+
+Anyone working in a unit (OPS read) can request items from a store to a location → a manager
+(CFG write) approves, optionally reducing quantities, or rejects with a reason → someone with OPS write
+issues them (an internal transfer). Requesters cannot approve their own requests unless they hold FIN write.
+
+## Notifications
+
+In-app, created by the database functions: purchase order submitted / approved / sent back, low stock
+(when a movement takes a unit's total to or below the reorder level), transfer incoming / received /
+refused, item request submitted / decided / issued. Recipients are the unit's managers (CFG write) or the
+person involved. The sidebar bell refreshes every minute.
 
 ## Customers
 

@@ -16,6 +16,10 @@ import { catalogRoutes } from './routes/catalog.js';
 import { supplierRoutes } from './routes/suppliers.js';
 import { inventoryRoutes } from './routes/inventory.js';
 import { customerRoutes } from './routes/customers.js';
+import { procurementRoutes } from './routes/procurement.js';
+import { transferRoutes } from './routes/transfers.js';
+import { requestRoutes } from './routes/requests.js';
+import { notificationRoutes } from './routes/notifications.js';
 
 export function createApp() {
   const app = express();
@@ -43,6 +47,10 @@ export function createApp() {
   authed.use('/suppliers', supplierRoutes());
   authed.use('/inventory', inventoryRoutes());
   authed.use('/customers', customerRoutes());
+  authed.use('/procurement', procurementRoutes());
+  authed.use('/transfers', transferRoutes());
+  authed.use('/requests', requestRoutes());
+  authed.use('/notifications', notificationRoutes());
   app.use('/api', authed);
 
   app.use('/api', notFoundHandler);

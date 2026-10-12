@@ -1,6 +1,7 @@
 import { NavLink } from 'react-router-dom';
 import { useSession } from '../session.jsx';
 import { hasTenantPermission, hasAnyUnitPermission } from '../lib/permissions.js';
+import { NotificationBell } from './Notifications.jsx';
 
 export function Layout({ children }) {
   const { me, signOut } = useSession();
@@ -19,9 +20,13 @@ export function Layout({ children }) {
             <div className="brand-tenant">{me.user.tenant_name}</div>
           </div>
         </div>
+        <NotificationBell />
         <nav>
           <NavLink to="/" end>Dashboard</NavLink>
           {hasClass('OPS') && <NavLink to="/inventory">Inventory</NavLink>}
+          {hasClass('OPS') && <NavLink to="/requests">Item requests</NavLink>}
+          {hasClass('FIN') && <NavLink to="/procurement">Purchasing</NavLink>}
+          {hasClass('OPS') && <NavLink to="/transfers">Transfers</NavLink>}
           {hasClass('OPS') && <NavLink to="/customers">Customers</NavLink>}
           {(hasClass('OPS') || hasClass('CFG')) && <NavLink to="/catalog">Catalogue</NavLink>}
           {(hasClass('FIN') || hasClass('CFG')) && <NavLink to="/suppliers">Suppliers</NavLink>}

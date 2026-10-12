@@ -118,6 +118,23 @@ export function inventoryRoutes() {
     res.json(rows);
   });
 
+  // Stock value at moving average cost (finance readers only: item_cost is FIN data).
+  router.get('/:businessUnitId/valuation', async (req, res) => {
+    const { businessUnitId } = parse(unitParam, req.params);
+    const rows = await req.db(async (c) => (await c.query(
+      `SELECT i.id AS item_id, i.sku, i.name AS item_name, u.code AS uom, sum(sb.qty_on_hand) AS on_hand,
+              ic.avg_unit_cost, round(sum(sb.qty_on_hand) * ic.avg_unit_cost, 2) AS stock_value
+         FROM item_cost ic
+         JOIN item i ON i.id = ic.item_id
+         JOIN unit_of_measure u ON u.id = i.base_uom_id
+         JOIN stock_balance sb ON sb.business_unit_id = ic.business_unit_id AND sb.item_id = ic.item_id
+        WHERE ic.business_unit_id = $1
+        GROUP BY i.id, i.sku, i.name, u.code, ic.avg_unit_cost
+       HAVING sum(sb.qty_on_hand) > 0
+        ORDER BY stock_value DESC`, [businessUnitId])).rows);
+    res.json(rows);
+  });
+
   router.get('/:businessUnitId/expiring', async (req, res) => {
     const { businessUnitId } = parse(unitParam, req.params);
     const { days } = parse(expiringQuery, req.query);

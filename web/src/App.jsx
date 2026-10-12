@@ -12,6 +12,9 @@ import { CatalogPage } from './pages/CatalogPage.jsx';
 import { SuppliersPage } from './pages/SuppliersPage.jsx';
 import { InventoryPage } from './pages/InventoryPage.jsx';
 import { CustomersPage } from './pages/CustomersPage.jsx';
+import { ProcurementPage } from './pages/ProcurementPage.jsx';
+import { TransfersPage } from './pages/TransfersPage.jsx';
+import { RequestsPage } from './pages/RequestsPage.jsx';
 
 function Gate() {
   const { me, loadError, refresh } = useSession();
@@ -41,6 +44,9 @@ function Gate() {
         <Route path="/suppliers" element={<SuppliersPage />} />
         <Route path="/inventory" element={<InventoryPage />} />
         <Route path="/customers" element={<CustomersPage />} />
+        <Route path="/procurement" element={<ProcurementPage />} />
+        <Route path="/transfers" element={<TransfersPage />} />
+        <Route path="/requests" element={<RequestsPage />} />
         <Route path="/account/password" element={<ChangePasswordPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

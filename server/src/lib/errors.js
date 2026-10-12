@@ -17,6 +17,8 @@ export function fromDatabaseError(err) {
   switch (err.code) {
     case '42501': // insufficient_privilege, including row-level security violations
       return forbidden(err.message.includes('row-level security') ? undefined : err.message);
+    case 'P0002': // no_data_found, raised by workflow functions
+      return notFound(err.message.charAt(0).toUpperCase() + err.message.slice(1) + '.');
     case '23505':
       return conflict('That record already exists.');
     case '23503':

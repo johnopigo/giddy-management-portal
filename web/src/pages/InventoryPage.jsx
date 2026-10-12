@@ -9,7 +9,9 @@ import { Tabs, UnitPicker, formatMoney, formatQty, useSelectedUnit, useUnitChoic
 const MOVEMENT_LABELS = {
   opening_balance: 'Opening balance', adjustment_in: 'Adjustment in', adjustment_out: 'Adjustment out',
   transfer: 'Transfer', issue: 'Issue', wastage: 'Wastage',
+  receipt: 'Purchase receipt', inter_unit_out: 'Sent to another unit', inter_unit_in: 'Received from another unit',
 };
+const MANUAL_TYPES = ['opening_balance', 'adjustment_in', 'adjustment_out', 'transfer', 'issue', 'wastage'];
 const TIER_LABELS = { branch: 'Branch store', department: 'Department store', staff: 'Staff holding' };
 
 export function InventoryPage() {
@@ -23,19 +25,22 @@ export function InventoryPage() {
   }
   const canMove = unitAccess(me, unitId, 'OPS') === 'write';
   const canConfigure = unitAccess(me, unitId, 'CFG') === 'write';
+  const canSeeValue = Boolean(unitAccess(me, unitId, 'FIN'));
 
   return (
     <>
       <PageHeader title="Inventory" subtitle="Stock held at branch stores, department stores and by staff."
         actions={<UnitPicker units={units} value={unitId} onChange={setUnitId} />} />
       <Tabs value={tab} onChange={setTab} tabs={[
-        ['stock', 'Stock on hand'], ['move', 'Record movement'], ['ledger', 'Movement history'], ['locations', 'Locations']]} />
+        ['stock', 'Stock on hand'], ['move', 'Record movement'], ['ledger', 'Movement history'], ['locations', 'Locations'],
+        ...(canSeeValue ? [['value', 'Stock value']] : [])]} />
       {unitId && tab === 'stock' && <StockTab unitId={unitId} />}
       {unitId && tab === 'move' && (canMove
         ? <MovementForm unitId={unitId} canAdjust={canConfigure} onPosted={() => setTab('ledger')} />
         : <div className="card muted">You have read-only access to stock in this unit.</div>)}
       {unitId && tab === 'ledger' && <LedgerTab unitId={unitId} />}
       {unitId && tab === 'locations' && <LocationsTab unitId={unitId} canConfigure={canConfigure} />}
+      {unitId && tab === 'value' && canSeeValue && <ValueTab unitId={unitId} />}
     </>
   );
 }
@@ -120,7 +125,8 @@ function MovementForm({ unitId, canAdjust, onPosted }) {
   const incoming = ['opening_balance', 'adjustment_in'].includes(form.type);
   const needsFrom = !incoming;
   const needsTo = incoming || form.type === 'transfer';
-  const types = Object.entries(MOVEMENT_LABELS).filter(([k]) => canAdjust || !['opening_balance', 'adjustment_in', 'adjustment_out'].includes(k));
+  const types = MANUAL_TYPES.map((k) => [k, MOVEMENT_LABELS[k]])
+    .filter(([k]) => canAdjust || !['opening_balance', 'adjustment_in', 'adjustment_out'].includes(k));
   const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
 
   const submit = async (e) => {
@@ -331,5 +337,32 @@ function LocationsTab({ unitId, canConfigure }) {
         </form>
       )}
     </>
+  );
+}
+
+function ValueTab({ unitId }) {
+  const rows = useLoad(() => api.get(`/api/inventory/${unitId}/valuation`), [unitId]);
+  const total = (rows.data ?? []).reduce((s, r) => s + Number(r.stock_value), 0);
+  return (
+    <section className="card">
+      <ErrorNote error={rows.error} />
+      <p className="muted small">Valued at moving average cost: each purchase receipt re-averages the cost of what is in stock.</p>
+      <div className="table-wrap">
+        <table>
+          <thead><tr><th>Item</th><th className="num">On hand</th><th className="num">Average cost</th><th className="num">Value</th></tr></thead>
+          <tbody>
+            {rows.data?.map((r) => (
+              <tr key={r.item_id}>
+                <td>{r.item_name} <span className="muted small">{r.sku}</span></td>
+                <td className="num">{formatQty(r.on_hand)} {r.uom}</td>
+                <td className="num">{formatMoney(r.avg_unit_cost)}</td>
+                <td className="num">{formatMoney(r.stock_value)}</td>
+              </tr>
+            ))}
+          </tbody>
+          <tfoot><tr><td colSpan={3} className="num"><strong>Total stock value</strong></td><td className="num"><strong>{formatMoney(total)}</strong></td></tr></tfoot>
+        </table>
+      </div>
+    </section>
   );
 }
