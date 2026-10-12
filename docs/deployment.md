@@ -11,6 +11,30 @@ The portal runs as three containers on one Linux server:
 Any cloud provider works: a virtual machine with **2 vCPUs, 4 GB memory and 40 GB disk** is plenty to start
 (for example a DigitalOcean droplet, AWS Lightsail, Hetzner or an Azure B2s). Choose a region close to Lagos.
 
+## DigitalOcean in one paste
+
+[`ops/digitalocean-user-data.sh`](../ops/digitalocean-user-data.sh) does sections 1–4 and the nightly backup
+schedule by itself on a new droplet:
+
+1. In DigitalOcean: **Create → Droplets**. Choose **Ubuntu 24.04 LTS**, **Basic**, **Regular, 2 vCPU / 4 GB**, region
+   **London (LON1)** or **Frankfurt (FRA1)** (the closest to Lagos), and add your SSH key or a root password. Tick
+   **Monitoring**, and **Backups** if you want DigitalOcean's weekly droplet backups as well.
+2. Under **Advanced options → Add Initialization scripts**, paste the whole file. Before pasting, fill in at its top:
+   `DOMAIN` (leave empty for now if the address isn't set up yet), and `OWNER`, `IT_ADMIN`, `SPA_PARTNER` as
+   `Full Name <email>`. `PAYSTACK_SECRET_KEY` can be added later.
+3. Click **Create Droplet** and wait about 10 minutes.
+4. Open the droplet's **Console** (in its DigitalOcean page) and run `cat /root/giddy-first-sign-in.txt`. It shows the
+   portal's address and the three one-time passwords. Hand them out, then delete the file.
+
+Without a domain, the address is `https://<droplet IP with dashes>.sslip.io` (for example
+`https://164-90-1-23.sslip.io`), with a real HTTPS certificate. To move to your own address later: add a DNS **A
+record** pointing it at the droplet's IP, set `DOMAIN` in `/opt/giddy/.env.production`, and run
+`cd /opt/giddy && docker compose --env-file .env.production up -d`. Then update the Paystack webhook URL.
+
+If something goes wrong, the install log is `/var/log/giddy-install.log`.
+
+The rest of this guide covers the same steps by hand, for any provider.
+
 ## 1. Prepare the server
 
 1. Create the VM with Ubuntu 24.04 LTS and install Docker: `curl -fsSL https://get.docker.com | sh`.
