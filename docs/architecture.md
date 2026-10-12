@@ -352,10 +352,51 @@ Every appointment has a bill (`BIL-<UNIT>-…`). It follows the guest-bill patte
   access and write a `sensitive_view` entry to the audit log: who looked, at whose record, and in what capacity.
   Writes are audited as "a version was recorded"; the health details themselves never enter the audit log.
 
+## Partnership settlements
+
+The revenue share between the Owner and a partnership unit's partner (the Spa).
+
+**Two sides.** The *Owner* side is anyone holding `tenant.settings`. The *partner* side is anyone holding
+`grants.approve` in the unit. Finance readers of the unit can view, but not act.
+
+**Agreement terms** (`partnership_agreement`) are versioned. One side proposes, the other accepts or rejects (with a
+reason); only one proposal is open at a time. The terms:
+- the rate;
+- who receives it;
+- the basis: gross, without VAT, or net of service charge and VAT;
+- who collects client payments;
+- whether retail counts;
+- the month they apply from.
+
+**Any term may be left blank** until it is known. A statement then lists what is missing and cannot be issued. For a
+month, the latest agreed version effective by the 1st applies.
+
+**Monthly figures** come from the unit's own books (`pt.figures`):
+- revenue: 4000 + 4200 + 4300;
+- service charge: 4100;
+- VAT: 2100.
+
+Retail (stock-item) sales are separated using the till lines (after discount, with that ticket's rates; voids count in
+the month of the void) and appointment add-ons (with their service charge, VAT and removals).
+
+**The amount:**
+- share = base × rate;
+- if the collector is not the beneficiary, the collector pays the beneficiary the share;
+- otherwise, the beneficiary pays the other side the rest (base − share).
+
+**Statements** (`SET-<UNIT>-…`): one per unit per month, only after the month has ended.
+- **issued** by one side: figures and terms are frozen. The issuer can withdraw it until it is agreed.
+- **agreed** by the other side: accrued in the unit's books.
+  - Partner pays: Dr 5400 Revenue share paid, Cr 2300 Due to owner.
+  - Owner pays: Dr 1160 Due from owner, Cr 4400 Revenue share earned.
+- **paid** (transfer or cash): Dr 2300 / Cr bank, or Dr bank / Cr 1160.
+
+Each step notifies the other side. Every change is in the audit log.
+
 ## Open decisions
 
-- Partnership revenue share: which side the rate applies to, the revenue basis, who collects
-  payments, and whether retail counts. The agreement table (stage 11) stores all four as settings.
+- Partnership revenue share: the rate, who receives it, the revenue basis, who collects payments and whether retail
+  counts are to be filled in on the Partnership page (stage 11 built them as blank, editable terms).
 - Department-level narrowing is enforced at the till (stage 4). Reading data is still unit-wide.
 - Supplier payments (settling 2000 Accounts payable) and settling balances between units (1150 / 2200,
   now also created by charge-to-room) are not built yet.

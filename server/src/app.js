@@ -26,6 +26,7 @@ import { recipeRoutes } from './routes/recipes.js';
 import { productionRoutes } from './routes/production.js';
 import { apartmentRoutes } from './routes/apartments.js';
 import { bookingRoutes } from './routes/bookings.js';
+import { partnershipRoutes } from './routes/partnership.js';
 
 export function createApp() {
   const app = express();
@@ -63,6 +64,7 @@ export function createApp() {
   authed.use('/production', productionRoutes());
   authed.use('/apartments', apartmentRoutes());
   authed.use('/bookings', bookingRoutes());
+  authed.use('/partnership', partnershipRoutes());
   app.use('/api', authed);
 
   app.use('/api', notFoundHandler);

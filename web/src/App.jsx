@@ -24,6 +24,7 @@ import { FrontDeskPage } from './pages/FrontDeskPage.jsx';
 import { ReservationPage } from './pages/ReservationPage.jsx';
 import { AppointmentsPage } from './pages/AppointmentsPage.jsx';
 import { AppointmentPage } from './pages/AppointmentPage.jsx';
+import { PartnershipPage } from './pages/PartnershipPage.jsx';
 
 function Gate() {
   const { me, loadError, refresh } = useSession();
@@ -66,6 +67,7 @@ function Gate() {
         <Route path="/front-desk/:unitId/reservations/:id" element={<ReservationPage />} />
         <Route path="/appointments" element={<AppointmentsPage />} />
         <Route path="/appointments/:unitId/:id" element={<AppointmentPage />} />
+        <Route path="/partnership" element={<PartnershipPage />} />
         <Route path="/account/password" element={<ChangePasswordPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

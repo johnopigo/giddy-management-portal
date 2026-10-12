@@ -37,6 +37,7 @@ export function Layout({ children }) {
           {(hasClass('OPS') || hasClass('CFG')) && <NavLink to="/catalog">Catalogue</NavLink>}
           {(hasClass('FIN') || hasClass('CFG')) && <NavLink to="/suppliers">Suppliers</NavLink>}
           {hasClass('FIN') && <NavLink to="/books">Books</NavLink>}
+          {me.scope.some((s) => s.management_model === 'partnership' && s.access.FIN) && <NavLink to="/partnership">Partnership</NavLink>}
           <div className="nav-sep" />
           <NavLink to="/organisation">Organisation</NavLink>
           {canSeeUsers && <NavLink to="/users">Users &amp; roles</NavLink>}
