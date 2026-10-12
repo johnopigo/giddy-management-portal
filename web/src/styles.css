@@ -184,3 +184,47 @@ tfoot th, tfoot td { border-bottom: none; }
 .bell-item:hover { background: var(--bg); }
 .bell-item.unread { background: var(--accent-bg); }
 @media (max-width: 760px) { .bell-panel { width: calc(100vw - 32px); } }
+
+/* Stage 4 */
+.till { display: grid; grid-template-columns: 1fr 380px; gap: 16px; align-items: start; }
+.item-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; }
+.item-tile { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; min-height: 86px; text-align: left;
+  background: var(--bg); border: 1px solid var(--line); color: var(--ink); }
+.item-tile:hover:not(:disabled) { border-color: var(--brand); }
+.item-tile.out { opacity: 0.45; }
+.till-cart { position: sticky; top: 16px; }
+.cart-line { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--line); }
+.qty-input { width: 72px; text-align: right; }
+.totals { display: flex; flex-direction: column; gap: 4px; margin: 10px 0; }
+.totals > div { display: flex; justify-content: space-between; align-items: center; }
+.totals .grand { font-weight: 700; font-size: 1.15rem; border-top: 1px solid var(--line); padding-top: 6px; }
+.totals .due { color: var(--bad-ink); font-weight: 600; }
+button.big { width: 100%; padding: 14px; font-size: 1.05rem; margin: 6px 0; }
+.stat-row { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 12px; margin-bottom: 16px; }
+.stat { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px 14px; display: flex; flex-direction: column; gap: 2px; }
+.stat strong { font-size: 1.2rem; }
+.receipt-paper { max-width: 380px; margin: 0 auto 16px; font-size: 0.95rem; }
+.receipt-lines td { padding: 6px 0; }
+.center-text { text-align: center; }
+.void-stamp { color: var(--bad-ink); font-weight: 800; letter-spacing: 0.2em; border: 2px solid var(--bad-ink); display: inline-block; padding: 2px 10px; margin-top: 6px; }
+.group-row td { background: var(--bg); font-weight: 600; font-size: 0.85rem; }
+.journal-entry { padding: 10px 0; border-bottom: 1px solid var(--line); }
+td.indent { padding-left: 28px; }
+@media (max-width: 960px) { .till { grid-template-columns: 1fr; } .till-cart { position: static; } }
+@media print {
+  .no-print, .sidebar { display: none !important; }
+  body, .content { background: #fff; padding: 0; }
+  .receipt-paper { border: none; box-shadow: none; max-width: 80mm; }
+}
+.cart-line .grow { min-width: 0; }
+.cart-line .qty-input, .cart-line .num, .cart-line button { flex-shrink: 0; }
+.cart-line .qty-input { width: 64px; }
+.cart-line .num { min-width: 92px; text-align: right; }
+@media (max-width: 760px) {
+  .grow { min-width: 0; }
+  .row > select, .row > input { min-width: 0; }
+  .page-header .actions, .page-header .actions .row { flex-wrap: wrap; }
+}
+.till > * { min-width: 0; }
+@media (max-width: 960px) { .till { grid-template-columns: minmax(0, 1fr); } }
+.till-cart .row > input { flex: 1 1 0; min-width: 0; }

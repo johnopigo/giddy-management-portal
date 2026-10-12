@@ -20,6 +20,8 @@ import { procurementRoutes } from './routes/procurement.js';
 import { transferRoutes } from './routes/transfers.js';
 import { requestRoutes } from './routes/requests.js';
 import { notificationRoutes } from './routes/notifications.js';
+import { posRoutes } from './routes/pos.js';
+import { financeRoutes } from './routes/finance.js';
 
 export function createApp() {
   const app = express();
@@ -51,6 +53,8 @@ export function createApp() {
   authed.use('/transfers', transferRoutes());
   authed.use('/requests', requestRoutes());
   authed.use('/notifications', notificationRoutes());
+  authed.use('/pos', posRoutes());
+  authed.use('/finance', financeRoutes());
   app.use('/api', authed);
 
   app.use('/api', notFoundHandler);

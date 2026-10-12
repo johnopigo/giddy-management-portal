@@ -12,7 +12,7 @@ export function Layout({ children }) {
 
   return (
     <div className="shell">
-      <aside className="sidebar">
+      <aside className="sidebar no-print">
         <div className="brand">
           <span className="brand-mark">G</span>
           <div>
@@ -23,6 +23,8 @@ export function Layout({ children }) {
         <NotificationBell />
         <nav>
           <NavLink to="/" end>Dashboard</NavLink>
+          {me.scope.some((s) => s.access.FIN === 'write') && <NavLink to="/till">Till</NavLink>}
+          {hasClass('FIN') && <NavLink to="/sales">Sales</NavLink>}
           {hasClass('OPS') && <NavLink to="/inventory">Inventory</NavLink>}
           {hasClass('OPS') && <NavLink to="/requests">Item requests</NavLink>}
           {hasClass('FIN') && <NavLink to="/procurement">Purchasing</NavLink>}
@@ -30,6 +32,7 @@ export function Layout({ children }) {
           {hasClass('OPS') && <NavLink to="/customers">Customers</NavLink>}
           {(hasClass('OPS') || hasClass('CFG')) && <NavLink to="/catalog">Catalogue</NavLink>}
           {(hasClass('FIN') || hasClass('CFG')) && <NavLink to="/suppliers">Suppliers</NavLink>}
+          {hasClass('FIN') && <NavLink to="/books">Books</NavLink>}
           <div className="nav-sep" />
           <NavLink to="/organisation">Organisation</NavLink>
           {canSeeUsers && <NavLink to="/users">Users &amp; roles</NavLink>}
