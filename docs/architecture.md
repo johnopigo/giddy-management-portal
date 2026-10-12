@@ -214,6 +214,24 @@ Every unit keeps its own double-entry ledger (`fin` schema).
 - **Sales history:** sellers (finance write without configuration write: cashiers, front desk) see their own
   tickets; managers, the owner and read-only viewers see all.
 
+## Recipes and production
+
+- A **recipe** belongs to one unit and one output item: `yield_qty` units of output need the listed
+  ingredient quantities (each in its own base unit). Managers (CFG write) maintain recipes; the kitchen
+  (OPS read) can read them. Cost per unit (at current average cost) and margin against the selling price
+  are shown only to finance readers.
+- **At the till** (`pos.stock_for_sale`): a stock item is sold from the till's store; a non-stock item with
+  an active recipe deducts its ingredients (qty × sold ÷ yield) from the till's store; a non-stock item without
+  a recipe (a service, corkage) deducts nothing. A sale fails cleanly if any ingredient is short, and a void
+  returns every ingredient.
+- **Production orders** (`PRD-<UNIT>-…`, stock outputs only): `planned → completed | cancelled`.
+  Completing consumes the ingredients actually used (default: planned) from one store
+  (`production_consume`: Dr 1250 Production in progress, Cr 1200) and puts the actual output into another
+  (`production_output`: Dr 1200, Cr 1250) costed at total input ÷ actual output. Anything left in 1250 —
+  a failed batch or rounding — is written off to 5100 at once, so 1250 always returns to zero.
+  Yield variance = (actual − planned) ÷ planned.
+- Movement → account mapping is now a table (`fin.movement_account`), so new movement types add a row.
+
 ## Open decisions
 
 - Partnership revenue share: which side the rate applies to, the revenue basis, who collects

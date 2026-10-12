@@ -26,6 +26,8 @@ export function Layout({ children }) {
           {me.scope.some((s) => s.access.FIN === 'write') && <NavLink to="/till">Till</NavLink>}
           {hasClass('FIN') && <NavLink to="/sales">Sales</NavLink>}
           {hasClass('OPS') && <NavLink to="/inventory">Inventory</NavLink>}
+          {hasClass('OPS') && <NavLink to="/recipes">Recipes</NavLink>}
+          {hasClass('OPS') && <NavLink to="/production">Production</NavLink>}
           {hasClass('OPS') && <NavLink to="/requests">Item requests</NavLink>}
           {hasClass('FIN') && <NavLink to="/procurement">Purchasing</NavLink>}
           {hasClass('OPS') && <NavLink to="/transfers">Transfers</NavLink>}

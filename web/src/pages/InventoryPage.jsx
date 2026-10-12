@@ -10,6 +10,7 @@ const MOVEMENT_LABELS = {
   opening_balance: 'Opening balance', adjustment_in: 'Adjustment in', adjustment_out: 'Adjustment out',
   transfer: 'Transfer', issue: 'Issue', wastage: 'Wastage',
   receipt: 'Purchase receipt', inter_unit_out: 'Sent to another unit', inter_unit_in: 'Received from another unit',
+  sale: 'Sale', sale_void: 'Sale voided', production_consume: 'Used in production', production_output: 'Produced',
 };
 const MANUAL_TYPES = ['opening_balance', 'adjustment_in', 'adjustment_out', 'transfer', 'issue', 'wastage'];
 const TIER_LABELS = { branch: 'Branch store', department: 'Department store', staff: 'Staff holding' };
@@ -228,7 +229,7 @@ function LedgerTab({ unitId }) {
                 <tr key={m.id}>
                   <td className="muted small">{m.id}</td>
                   <td className="small">{formatDateTime(m.posted_at)}</td>
-                  <td>{MOVEMENT_LABELS[m.movement_type]}</td>
+                  <td>{MOVEMENT_LABELS[m.movement_type] ?? m.movement_type.replaceAll('_', ' ')}</td>
                   <td>{m.item_name}{m.batch_no && <div className="muted small">Batch {m.batch_no}</div>}</td>
                   <td className="num">{formatQty(m.qty)}</td>
                   <td className="small">{m.from_location_name ?? '—'} → {m.to_location_name ?? '—'}</td>
