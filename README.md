@@ -62,8 +62,8 @@ file. They exercise the real database rules through the HTTP API.
 |---|---|---|
 | 1 | Foundations: organisation, users, roles, partner approvals, row-level security, audit log | **Done** |
 | 2 | Item & supplier masters, three-tier stock locations, stock ledger (FEFO), shared customers | **Done** |
-| 3 | Procurement: purchase orders, goods receiving, transfers, item requests | Next |
-| 4 | Point of sale and finance core (double-entry postings, voids, period close) | |
+| 3 | Procurement: purchase orders, goods receiving, average costing, transfers between units, item requests, notifications | **Done** |
+| 4 | Point of sale and finance core (double-entry postings, voids, period close) | Next |
 | 5 | Food & Beverage: recipes, production orders | |
 | 6–7 | Luxury Apartments: rooms, reservations, folios, housekeeping, charge-to-room | |
 | 8 | Booking engine (service-based and slot-based) | |
