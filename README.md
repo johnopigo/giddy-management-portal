@@ -78,5 +78,5 @@ file. They exercise the real database rules through the HTTP API.
 | 10 | Spa: intake forms, treatment notes, intake required before treatment | **Done** |
 | 11 | Partnership settlements: agreed terms (blank until known), monthly statements, accrual and payment | **Done** |
 | 12–13 | Online booking portals (rooms, Spa, Studio) with Paystack deposits, holds and the guest's booking page | **Done** |
-| 14 | Reports and group dashboard | Next |
-| 15–16 | Hardening, migration, go-live | |
+| 14 | Reports and group dashboard: revenue, margin, takings, open bills, stock value, occupancy, appointments, best sellers, CSV | **Done** |
+| 15–16 | Hardening, migration, go-live | Next |

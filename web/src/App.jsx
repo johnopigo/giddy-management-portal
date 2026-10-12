@@ -26,6 +26,7 @@ import { ReservationPage } from './pages/ReservationPage.jsx';
 import { AppointmentsPage } from './pages/AppointmentsPage.jsx';
 import { AppointmentPage } from './pages/AppointmentPage.jsx';
 import { PartnershipPage } from './pages/PartnershipPage.jsx';
+import { ReportsPage } from './pages/ReportsPage.jsx';
 
 function Gate() {
   const { me, loadError, refresh } = useSession();
@@ -69,6 +70,7 @@ function Gate() {
         <Route path="/appointments" element={<AppointmentsPage />} />
         <Route path="/appointments/:unitId/:id" element={<AppointmentPage />} />
         <Route path="/partnership" element={<PartnershipPage />} />
+        <Route path="/reports" element={<ReportsPage />} />
         <Route path="/account/password" element={<ChangePasswordPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

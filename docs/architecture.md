@@ -437,6 +437,42 @@ offers *Pay* while held.
 "test payment" and lets you pay or decline; no money moves. In production, online payments refuse to start without
 `PAYSTACK_SECRET_KEY`. `PUBLIC_URL` is the address Paystack returns guests to.
 
+## Reports and the group dashboard
+
+**Reports** (`/reports`, `GET /api/reports/summary?from&to[&unitId]`, up to a year at a time) are read under the
+reader's own access. A unit appears only if they may read its finances, so:
+- the Owner sees the whole group, the Spa included, read-only;
+- a partner sees their unit;
+- a unit manager or cashier sees theirs;
+- IT sees nothing.
+
+**What is reported, per unit and in total:**
+- **From the books** (journal lines in the period):
+  - revenue, net of service charge and VAT (4000 + 4200 + 4300);
+  - service charge (4100) and VAT (2100);
+  - cost of goods (5000), gross profit and margin;
+  - takings by cash, card and transfer: payments into 1000 / 1010 / 1020, excluding partnership settlements;
+  - sales charged to rooms.
+- **Closing balances:**
+  - open guest and client bills (1100);
+  - stock value at average cost (1200).
+- **Apartments:**
+  - occupancy: room-nights sold ÷ rooms × days;
+  - average daily rate: room revenue ÷ nights sold;
+  - revenue per available room: room revenue ÷ room-nights.
+- **Spa and Studio:** appointments completed, still to come, cancelled, no-show, and booked online; bookings revenue.
+- **Best sellers:** till lines after discount, voids excluded, plus appointment add-ons less removals.
+- **The latest partnership statement.**
+
+**The chart** stacks net revenue by unit, by day (by week beyond two months).
+- Each kind of unit keeps a fixed colour slot (apartments, F&B, studio, spa), whatever the filter, from a palette
+  validated for colour-blind separation on the app's light and dark surfaces.
+- Light-mode contrast for two slots is under 3:1, so every chart has a legend, a tooltip listing every unit, a table
+  view and a CSV download.
+
+**The dashboard** shows *Today across your units* (revenue, takings, open bills, rooms occupied, appointments) to
+anyone who can read finances.
+
 ## Open decisions
 
 - Partnership revenue share: the rate, who receives it, the revenue basis, who collects payments and whether retail
