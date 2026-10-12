@@ -28,6 +28,8 @@ export function fromDatabaseError(err) {
       return badRequest(err.message);
     case 'GD409': // a clash raised by our own functions (e.g. a room already booked): keep the message
       return conflict(err.message.charAt(0).toUpperCase() + err.message.slice(1) + '.');
+    case '23P01': // exclusion constraint: the last line of defence against double booking
+      return conflict('That time was just taken. Please choose another.');
     case '40001':
     case '40P01':
       return conflict('The record was changed by someone else. Please retry.');

@@ -25,6 +25,7 @@ import { financeRoutes } from './routes/finance.js';
 import { recipeRoutes } from './routes/recipes.js';
 import { productionRoutes } from './routes/production.js';
 import { apartmentRoutes } from './routes/apartments.js';
+import { bookingRoutes } from './routes/bookings.js';
 
 export function createApp() {
   const app = express();
@@ -61,6 +62,7 @@ export function createApp() {
   authed.use('/recipes', recipeRoutes());
   authed.use('/production', productionRoutes());
   authed.use('/apartments', apartmentRoutes());
+  authed.use('/bookings', bookingRoutes());
   app.use('/api', authed);
 
   app.use('/api', notFoundHandler);

@@ -6,6 +6,7 @@ import { useSession } from '../session.jsx';
 import { unitAccess } from '../lib/permissions.js';
 import { Badge, ErrorNote, PageHeader } from '../components/ui.jsx';
 import { Tabs, UnitPicker, formatMoney, useSelectedUnit } from '../components/UnitPicker.jsx';
+import { GuestPicker } from '../components/GuestPicker.jsx';
 
 export const ROOM_STATUS = {
   available: ['Available', 'good'], occupied: ['Occupied', 'accent'], cleaning: ['Cleaning', 'warn'],
@@ -172,25 +173,13 @@ function NewBooking({ unitId }) {
   const [notes, setNotes] = useState('');
   const [rooms, setRooms] = useState([]); // [{ roomTypeId, roomId, label, price }]
   const [guest, setGuest] = useState(null);
-  const [guestQ, setGuestQ] = useState('');
-  const [newGuest, setNewGuest] = useState({ fullName: '', phone: '', email: '' });
   const [error, setError] = useState(null);
   const valid = checkOut > checkIn;
   const avail = useLoad(() => (valid ? api.get(`/api/apartments/${unitId}/availability?checkIn=${checkIn}&checkOut=${checkOut}`) : Promise.resolve([])), [unitId, checkIn, checkOut]);
-  const found = useLoad(() => (guestQ.trim().length >= 2 ? api.get(`/api/customers?q=${encodeURIComponent(guestQ.trim())}`) : Promise.resolve([])), [guestQ]);
   const total = rooms.reduce((s, r) => s + Number(r.price), 0);
 
   const addRoom = (type, room) => setRooms([...rooms, { roomTypeId: type.room_type_id, roomId: room?.id ?? null,
     label: `${type.name}${room ? ` · ${room.room_number}` : ' · any free room'}`, price: type.stay_total }]);
-  const createGuest = async () => {
-    setError(null);
-    try {
-      setGuest(await api.post('/api/customers', { fullName: newGuest.fullName, phone: newGuest.phone || null, email: newGuest.email || null }));
-    } catch (err) {
-      if (err.status === 409 && err.details?.existing) setGuest(err.details.existing);
-      else setError(err);
-    }
-  };
   const submit = async () => {
     setError(null);
     try {
@@ -255,22 +244,7 @@ function NewBooking({ unitId }) {
         <ul className="plain">{rooms.map((r, i) => <li key={i} className="row spread"><span>{r.label}</span><span>{formatMoney(r.price)} <button className="link" onClick={() => setRooms(rooms.filter((_, j) => j !== i))}>×</button></span></li>)}</ul>
         {rooms.length > 0 && <p><strong>Rooms total {formatMoney(total)}</strong> <span className="muted small">before service charge and VAT</span></p>}
         <h3>Guest</h3>
-        {guest ? (
-          <div className="row"><strong>{guest.full_name}</strong><span className="muted small">{guest.phone ?? guest.email}</span><button className="link" onClick={() => setGuest(null)}>Change</button></div>
-        ) : (
-          <>
-            <input placeholder="Search guests by name or phone" value={guestQ} onChange={(e) => setGuestQ(e.target.value)} />
-            <div className="list">
-              {found.data?.map((c) => <button key={c.id} className="list-item" onClick={() => setGuest(c)}><strong>{c.full_name}</strong><span className="muted small">{c.phone ?? c.email}</span></button>)}
-            </div>
-            <div className="row wrap">
-              <input placeholder="New guest: full name" value={newGuest.fullName} onChange={(e) => setNewGuest({ ...newGuest, fullName: e.target.value })} />
-              <input placeholder="Phone" value={newGuest.phone} onChange={(e) => setNewGuest({ ...newGuest, phone: e.target.value })} />
-              <input placeholder="Email" value={newGuest.email} onChange={(e) => setNewGuest({ ...newGuest, email: e.target.value })} />
-              <button className="secondary small-btn" onClick={createGuest} disabled={!newGuest.fullName}>Add guest</button>
-            </div>
-          </>
-        )}
+        <GuestPicker guest={guest} onChange={setGuest} />
         <label>Notes<input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Late arrival, airport pick-up…" /></label>
         <ErrorNote error={error} />
         <button className="primary" disabled={!guest || rooms.length === 0 || !valid} onClick={submit}>Confirm booking</button>
