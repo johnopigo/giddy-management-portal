@@ -12,6 +12,10 @@ import { userRoutes } from './routes/users.js';
 import { roleRoutes } from './routes/roles.js';
 import { assignmentRoutes } from './routes/assignments.js';
 import { auditRoutes } from './routes/audit.js';
+import { catalogRoutes } from './routes/catalog.js';
+import { supplierRoutes } from './routes/suppliers.js';
+import { inventoryRoutes } from './routes/inventory.js';
+import { customerRoutes } from './routes/customers.js';
 
 export function createApp() {
   const app = express();
@@ -35,6 +39,10 @@ export function createApp() {
   authed.use('/roles', roleRoutes());
   authed.use('/assignments', assignmentRoutes());
   authed.use('/audit', auditRoutes());
+  authed.use('/catalog', catalogRoutes());
+  authed.use('/suppliers', supplierRoutes());
+  authed.use('/inventory', inventoryRoutes());
+  authed.use('/customers', customerRoutes());
   app.use('/api', authed);
 
   app.use('/api', notFoundHandler);

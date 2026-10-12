@@ -6,6 +6,7 @@ export function Layout({ children }) {
   const { me, signOut } = useSession();
   const canSeeUsers = hasTenantPermission(me, 'users.read');
   const canApprove = hasAnyUnitPermission(me, 'grants.approve');
+  const hasClass = (c) => me.scope.some((s) => s.access[c]);
   const canAudit = hasAnyUnitPermission(me, 'audit.read') || hasTenantPermission(me, 'audit.read_security');
 
   return (
@@ -20,6 +21,11 @@ export function Layout({ children }) {
         </div>
         <nav>
           <NavLink to="/" end>Dashboard</NavLink>
+          {hasClass('OPS') && <NavLink to="/inventory">Inventory</NavLink>}
+          {hasClass('OPS') && <NavLink to="/customers">Customers</NavLink>}
+          {(hasClass('OPS') || hasClass('CFG')) && <NavLink to="/catalog">Catalogue</NavLink>}
+          {(hasClass('FIN') || hasClass('CFG')) && <NavLink to="/suppliers">Suppliers</NavLink>}
+          <div className="nav-sep" />
           <NavLink to="/organisation">Organisation</NavLink>
           {canSeeUsers && <NavLink to="/users">Users &amp; roles</NavLink>}
           {canApprove && <NavLink to="/approvals">Approvals</NavLink>}

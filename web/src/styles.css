@@ -140,3 +140,33 @@ th { font-size: 0.8rem; color: var(--muted); font-weight: 600; }
   .diff { grid-template-columns: 1fr; }
   .page-header { flex-direction: column; }
 }
+
+/* Stage 2 */
+.nav-sep { height: 1px; background: var(--line); margin: 6px 4px; }
+.tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); margin-bottom: 16px; flex-wrap: wrap; }
+.tab { background: none; border: none; border-bottom: 2px solid transparent; border-radius: 0; padding: 8px 12px; color: var(--muted); }
+.tab.active { color: var(--ink); border-bottom-color: var(--brand); font-weight: 600; }
+.unit-picker { margin: 0; min-width: 200px; }
+.form-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 0 14px; align-items: end; }
+.form-grid .full { grid-column: 1 / -1; }
+.form-grid h2 { margin-bottom: 12px; }
+.checks { display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px; }
+label.inline { flex-direction: row; align-items: center; gap: 6px; color: var(--ink); margin: 0; }
+.num { text-align: right; white-space: nowrap; }
+tr.dim td { opacity: 0.55; }
+tr.editing td { background: var(--bg); }
+table.inner td { border-bottom: none; padding: 4px 8px; font-size: 0.85rem; }
+.warn-card { border-color: var(--warn-ink); }
+.tree-row { padding: 6px 0; border-bottom: 1px dashed var(--line); }
+.split { display: grid; grid-template-columns: minmax(260px, 360px) 1fr; gap: 16px; align-items: start; }
+.split .row { margin-bottom: 12px; }
+.list { padding: 6px; }
+.list-item { display: flex; flex-direction: column; align-items: flex-start; width: 100%; background: none; border-radius: 8px; padding: 8px 10px; color: var(--ink); }
+.list-item:hover { background: var(--bg); }
+.list-item.active { background: var(--accent-bg); }
+textarea { font: inherit; color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; }
+.prewrap { white-space: pre-wrap; }
+.badge + .badge { margin-left: 4px; }
+@media (max-width: 760px) {
+  .split { grid-template-columns: 1fr; }
+}
