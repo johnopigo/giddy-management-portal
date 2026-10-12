@@ -67,8 +67,8 @@ file. They exercise the real database rules through the HTTP API.
 | 5 | Food & Beverage: recipes (ingredients deducted at the till), production orders with yield variance | **Done** |
 | 6–7 | Luxury Apartments: rooms, reservations, folios, housekeeping, charge-to-room | **Done** |
 | 8 | Booking engine (service-based and slot-based) | **Done** |
-| 9 | Content Studio booth rentals | Next |
-| 10 | Spa operations | |
+| 9 | Content Studio booth rentals: deposits, add-ons, bills, extending | **Done** |
+| 10 | Spa operations | Next |
 | 11 | Partnership settlements | |
 | 12–13 | Online booking portals with Paystack | |
 | 14 | Reports and group dashboard | |

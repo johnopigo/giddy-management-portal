@@ -309,7 +309,30 @@ refused and lists them.
 - Staff with a login are notified when a booking is made, moved or cancelled on their schedule.
 - The System Owner sees the Spa read-only.
 
-Payments for appointments and the Spa intake form (SEN data) come with the Studio and Spa stages.
+The Spa intake form (SEN data) comes with the Spa stage.
+
+## Appointment bills (Content Studio; the Spa uses the same)
+
+Every appointment has a bill (`BIL-<UNIT>-…`). It follows the guest-bill pattern: entries are permanent and signed
+(charges +, payments −), and every entry is posted to the books through account 1100 (guest & client ledger).
+
+- **Deposit:** each service has a deposit percentage. The booking shows the deposit due until it is paid, and the
+  bookings list can filter *awaiting deposit*. Deposits are payments taken before the service:
+  Dr 1000/1010/1020, Cr 1100. The bill is in credit until the booking is charged.
+- **Payments** never exceed what is expected in total: the booking with service charge and VAT, plus add-ons.
+  **Refunds** only of a credit balance. **Adjustments** (a manager, with a reason) reduce what is owed.
+- **Add-ons:** any catalogue item on sale in the unit, e.g. equipment hire, editing hours or memory cards. They are
+  charged with service charge and VAT (Dr 1100, Cr 4000 / 4100 / 2100).
+  - A stock item leaves the chosen store at once (a `sale` movement, so cost of goods is posted). A recipe item uses
+    its ingredients.
+  - An add-on can be taken off while the bill is open: the lines are reversed and the stock goes back (`sale_void`).
+- **Completing** the appointment charges the booking: Dr 1100, Cr 4300 Bookings revenue, plus 4100 and 2100.
+- **Extending** (slot hire only, booked or under way) adds slots if the same booth is free. The price follows the slots.
+- **Cancel / no-show** with a paid deposit: refund it first, or keep it as a cancellation or no-show fee
+  (Dr 1100, Cr 4300). A bill with add-ons still owed must be settled first.
+- The bill closes by itself once the appointment is over (completed, cancelled or no-show) and the balance is zero.
+  The bookings list can filter *owing*.
+- Only finance readers (FIN) see bills, balances and deposits. Staff whose only access is their own schedule see neither.
 
 ## Open decisions
 

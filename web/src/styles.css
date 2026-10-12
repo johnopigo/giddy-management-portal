@@ -270,3 +270,9 @@ td.indent { padding-left: 28px; }
 .slot-chip.active { background: var(--accent-ink); border-color: var(--accent-ink); color: #fff; }
 .day-checks { flex-direction: row; flex-wrap: wrap; gap: 10px; margin: 0; }
 @media (max-width: 700px) { .tl-label { flex-basis: 96px; font-size: 0.85rem; } }
+.show-narrow, .show-narrow-cell { display: none; }
+@media (max-width: 700px) {
+  .hide-narrow { display: none; }
+  .show-narrow { display: inline; }
+  .show-narrow-cell { display: table-cell; }
+}

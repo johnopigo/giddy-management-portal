@@ -28,6 +28,7 @@ const serviceFields = {
   price: z.number().nonnegative().max(1e9),
   onlineBookable: z.boolean(),
   isActive: z.boolean(),
+  depositPct: z.number().min(0).max(100),
 };
 const serviceSchema = z.object({
   code: z.string().trim().toUpperCase().regex(/^[A-Z0-9_-]{2,20}$/),
@@ -38,6 +39,7 @@ const serviceSchema = z.object({
   minSlots: serviceFields.minSlots.default(1),
   maxSlots: serviceFields.maxSlots.default(1),
   onlineBookable: serviceFields.onlineBookable.default(false),
+  depositPct: serviceFields.depositPct.default(0),
   isActive: serviceFields.isActive.default(true),
   resources: serviceResources.default([]),
 });
@@ -60,7 +62,18 @@ const bookSchema = z.object({
 const rescheduleSchema = z.object({
   startsAt: z.iso.datetime({ offset: true }), slots: z.int().min(1).max(48).nullish(), preferred,
 });
-const reasonSchema = z.object({ reason: z.string().trim().max(500).nullish() });
+const reasonSchema = z.object({ reason: z.string().trim().max(500).nullish(), keepDeposit: z.boolean().default(false) });
+const billPostSchema = z.object({
+  kind: z.enum(['payment', 'refund', 'adjustment']),
+  amount: z.number().positive().max(1e10),
+  method: z.enum(['cash', 'card', 'transfer']).nullish(),
+  reference: z.string().trim().max(80).nullish(),
+  description: z.string().trim().max(200).nullish(),
+});
+const addonSchema = z.object({ itemId: z.uuid(), qty: z.number().positive().max(10000).default(1), locationId: z.uuid().nullish() });
+const voidSchema = z.object({ reason: z.string().trim().min(2).max(200) });
+const extendSchema = z.object({ slots: z.int().min(1).max(48).default(1) });
+const entryParams = z.object({ businessUnitId: z.uuid(), entryId: z.coerce.number().int().positive() });
 const blockSchema = z.object({
   from: z.iso.datetime({ offset: true }), to: z.iso.datetime({ offset: true }), reason: z.string().trim().min(2).max(200),
 });
@@ -68,6 +81,7 @@ const dayQuery = z.object({ date: z.iso.date() });
 const listQuery = z.object({
   status: z.string().max(80).optional(), q: z.string().trim().max(80).optional(),
   from: z.iso.date().optional(), to: z.iso.date().optional(),
+  money: z.enum(['owing', 'deposit']).optional(),
 });
 
 const parsePreferred = (raw) => {
@@ -85,8 +99,14 @@ const APPT_SUMMARY = `
          a.service_id, s.name AS service_name, s.mode, a.customer_id, c.full_name AS guest_name, c.phone AS guest_phone,
          (SELECT jsonb_agg(jsonb_build_object('resourceId', r.id, 'name', r.name, 'role', ar.role, 'kind', r.kind) ORDER BY ar.role)
             FROM appointment_resource ar JOIN bookable_resource r ON r.id = ar.resource_id
-           WHERE ar.appointment_id = a.id AND (ar.is_active OR a.status IN ('cancelled', 'no_show'))) AS resources
-    FROM appointment a JOIN bookable_service s ON s.id = a.service_id JOIN customer c ON c.id = a.customer_id`;
+           WHERE ar.appointment_id = a.id AND (ar.is_active OR a.status IN ('cancelled', 'no_show'))) AS resources,
+         CASE WHEN f.fin THEN a.deposit_due END AS deposit_due,
+         CASE WHEN f.fin THEN m.paid END AS paid,
+         CASE WHEN f.fin THEN m.balance END AS balance,
+         CASE WHEN f.fin THEN m.bill_status END AS bill_status
+    FROM appointment a JOIN bookable_service s ON s.id = a.service_id JOIN customer c ON c.id = a.customer_id
+    CROSS JOIN LATERAL (SELECT sec.has_scope(a.business_unit_id, 'FIN') AS fin) f
+    LEFT JOIN LATERAL bk.bill_money(a.id) m ON f.fin`;
 
 // Local-day boundaries in the unit's time zone, as SQL taking ($1 = unit, $2 = date).
 const DAY_RANGE = `tstzrange(($2::date)::timestamp AT TIME ZONE (SELECT time_zone FROM business_unit WHERE id = $1),
@@ -109,7 +129,7 @@ export function bookingRoutes() {
            FROM bookable_resource r WHERE r.business_unit_id = $1 ORDER BY r.kind, r.name`, [businessUnitId])).rows,
       services: (await c.query(
         `SELECT s.id, s.code, s.name, s.description, s.mode, s.duration_min, s.buffer_min, s.min_slots, s.max_slots,
-                s.price, s.online_bookable, s.is_active,
+                s.price, s.deposit_pct, s.online_bookable, s.is_active,
                 coalesce((SELECT jsonb_agg(jsonb_build_object('resourceId', sr.resource_id, 'role', sr.role) ORDER BY sr.role)
                             FROM service_resource sr WHERE sr.service_id = s.id), '[]') AS resources
            FROM bookable_service s WHERE s.business_unit_id = $1 ORDER BY s.name`, [businessUnitId])).rows,
@@ -186,10 +206,10 @@ export function bookingRoutes() {
     const row = await req.db(async (c) => {
       const s = (await c.query(
         `INSERT INTO bookable_service (tenant_id, business_unit_id, code, name, description, mode, duration_min, buffer_min,
-                                       min_slots, max_slots, price, online_bookable, is_active)
-         VALUES (sec.current_tenant_id(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING id, code, name, mode`,
+                                       min_slots, max_slots, price, online_bookable, is_active, deposit_pct)
+         VALUES (sec.current_tenant_id(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) RETURNING id, code, name, mode`,
         [businessUnitId, b.code, b.name, b.description, b.mode, b.durationMin, b.bufferMin,
-          b.mode === 'slot' ? b.minSlots : 1, b.mode === 'slot' ? b.maxSlots : 1, b.price, b.onlineBookable, b.isActive])).rows[0];
+          b.mode === 'slot' ? b.minSlots : 1, b.mode === 'slot' ? b.maxSlots : 1, b.price, b.onlineBookable, b.isActive, b.depositPct])).rows[0];
       await saveServiceResources(c, s.id, businessUnitId, b.resources);
       return s;
     });
@@ -205,10 +225,11 @@ export function bookingRoutes() {
                 duration_min = coalesce($5, duration_min), buffer_min = coalesce($6, buffer_min),
                 min_slots = CASE WHEN mode = 'slot' THEN coalesce($7, min_slots) ELSE 1 END,
                 max_slots = CASE WHEN mode = 'slot' THEN coalesce($8, max_slots) ELSE 1 END,
-                price = coalesce($9, price), online_bookable = coalesce($10, online_bookable), is_active = coalesce($11, is_active)
+                price = coalesce($9, price), online_bookable = coalesce($10, online_bookable), is_active = coalesce($11, is_active),
+                deposit_pct = coalesce($12, deposit_pct)
           WHERE id = $1 AND business_unit_id = $2`,
         [id, businessUnitId, b.name ?? null, b.description ?? null, b.durationMin ?? null, b.bufferMin ?? null,
-          b.minSlots ?? null, b.maxSlots ?? null, b.price ?? null, b.onlineBookable ?? null, b.isActive ?? null])).rowCount;
+          b.minSlots ?? null, b.maxSlots ?? null, b.price ?? null, b.onlineBookable ?? null, b.isActive ?? null, b.depositPct ?? null])).rowCount;
       if (!n) throw notFound('Service not found.');
       if (b.resources) await saveServiceResources(c, id, businessUnitId, b.resources);
     });
@@ -259,8 +280,11 @@ export function bookingRoutes() {
           AND ($3::text IS NULL OR c.full_name ILIKE '%' || $3 || '%' OR a.booking_ref ILIKE '%' || $3 || '%' OR c.phone ILIKE '%' || $3 || '%')
           AND ($4::date IS NULL OR a.starts_at >= ($4::date)::timestamp AT TIME ZONE (SELECT time_zone FROM business_unit WHERE id = $1))
           AND ($5::date IS NULL OR a.starts_at < ($5::date + 1)::timestamp AT TIME ZONE (SELECT time_zone FROM business_unit WHERE id = $1))
+          AND ($6::text IS NULL OR f.fin AND (
+                ($6 = 'owing' AND m.bill_status = 'open' AND a.status = 'completed' AND m.balance > 0)
+             OR ($6 = 'deposit' AND a.status = 'booked' AND a.deposit_due > m.paid)))
         ORDER BY a.starts_at, a.booking_ref LIMIT 300`,
-      [businessUnitId, q.status ?? null, q.q || null, q.from ?? null, q.to ?? null])).rows);
+      [businessUnitId, q.status ?? null, q.q || null, q.from ?? null, q.to ?? null, q.money ?? null])).rows);
     res.json(rows);
   });
 
@@ -277,7 +301,19 @@ export function bookingRoutes() {
                 sec.user_name(a.cancelled_by) AS cancelled_by_name, a.cancelled_at, a.cancel_reason
            FROM appointment a JOIN bookable_service s ON s.id = a.service_id JOIN business_unit bu ON bu.id = a.business_unit_id
           WHERE a.id = $1`, [id])).rows[0];
-      return { ...a, ...extra };
+      const bill = (await c.query(
+        `SELECT b.id, b.bill_number, b.status, b.closed_at, bk.bill_balance(b.id) AS balance, bk.bill_paid(b.id) AS paid,
+                bk.expected_total(b.appointment_id) AS expected_total
+           FROM appointment_bill b WHERE b.appointment_id = $1`, [id])).rows[0] ?? null;
+      if (bill) {
+        bill.entries = (await c.query(
+          `SELECT e.id::int AS id, e.entry_type, e.description, e.amount, e.qty, e.unit_price, e.method, e.reference,
+                  e.reverses_entry_id::int AS reverses_entry_id,
+                  EXISTS (SELECT 1 FROM bill_entry x WHERE x.reverses_entry_id = e.id) AS reversed,
+                  sec.user_name(e.posted_by) AS posted_by_name, e.posted_at
+             FROM bill_entry e WHERE e.bill_id = $1 ORDER BY e.id`, [bill.id])).rows;
+      }
+      return { ...a, ...extra, bill };
     });
     if (!data) throw notFound('Appointment not found.');
     res.json(data);
@@ -321,14 +357,54 @@ export function bookingRoutes() {
   for (const [path, action] of [['cancel', 'cancelled'], ['no-show', 'no_show']]) {
     router.post(`/:businessUnitId/appointments/:id/${path}`, async (req, res) => {
       const { businessUnitId, id } = parse(idParams, req.params);
-      const { reason } = parse(reasonSchema, req.body ?? {});
+      const { reason, keepDeposit } = parse(reasonSchema, req.body ?? {});
       await req.db(async (c) => {
         await inUnit(c, id, businessUnitId);
-        await c.query('SELECT bk.cancel($1, $2, $3)', [id, action, reason ?? null]);
+        await c.query('SELECT bk.cancel($1, $2, $3, $4)', [id, action, reason ?? null, keepDeposit]);
       });
       res.status(204).end();
     });
   }
+
+  // ---------------- bills, add-ons, extending ----------------
+  router.post('/:businessUnitId/appointments/:id/bill', async (req, res) => {
+    const { businessUnitId, id } = parse(idParams, req.params);
+    const b = parse(billPostSchema, req.body);
+    const entryId = await req.db(async (c) => {
+      await inUnit(c, id, businessUnitId);
+      return (await c.query('SELECT bk.bill_post($1, $2, $3, $4, $5, $6) AS id',
+        [id, b.kind, b.description ?? null, b.amount, b.method ?? null, b.reference ?? null])).rows[0].id;
+    });
+    res.status(201).json({ id: Number(entryId) });
+  });
+
+  router.post('/:businessUnitId/appointments/:id/addons', async (req, res) => {
+    const { businessUnitId, id } = parse(idParams, req.params);
+    const b = parse(addonSchema, req.body);
+    const entryId = await req.db(async (c) => {
+      await inUnit(c, id, businessUnitId);
+      return (await c.query('SELECT bk.add_addon($1, $2, $3, $4) AS id', [id, b.itemId, b.qty, b.locationId ?? null])).rows[0].id;
+    });
+    res.status(201).json({ id: Number(entryId) });
+  });
+
+  router.post('/:businessUnitId/bill-entries/:entryId/void', async (req, res) => {
+    const { businessUnitId, entryId } = parse(entryParams, req.params);
+    const { reason } = parse(voidSchema, req.body);
+    await req.db(async (c) => {
+      const e = (await c.query('SELECT 1 FROM bill_entry WHERE id = $1 AND business_unit_id = $2', [entryId, businessUnitId])).rows[0];
+      if (!e) throw notFound('Bill line not found.');
+      await c.query('SELECT bk.void_addon($1, $2)', [entryId, reason]);
+    });
+    res.status(204).end();
+  });
+
+  router.post('/:businessUnitId/appointments/:id/extend', async (req, res) => {
+    const { businessUnitId, id } = parse(idParams, req.params);
+    const { slots } = parse(extendSchema, req.body ?? {});
+    await req.db(async (c) => { await inUnit(c, id, businessUnitId); await c.query('SELECT bk.extend($1, $2)', [id, slots]); });
+    res.status(204).end();
+  });
 
   return router;
 }

@@ -186,12 +186,13 @@ function BlockForm({ unitId, date, tz, resources, onDone }) {
 
 export function ApptTable({ unitId, rows, tz, empty, timeOnly = false }) {
   if (!rows?.length) return <p className="muted">{empty}</p>;
+  const money = rows.some((x) => x.balance != null);
   const when = (x) => (timeOnly ? `${localTime(x.starts_at, tz)}–${localTime(x.ends_at, tz)}`
     : `${new Date(x.starts_at).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', timeZone: tz })} ${localTime(x.starts_at, tz)}–${localTime(x.ends_at, tz)}`);
   return (
     <div className="table-wrap">
       <table>
-        <thead><tr><th>When</th><th>Guest</th><th>Service</th><th>With</th><th>Status</th></tr></thead>
+        <thead><tr><th>When</th><th>Guest</th><th>Service</th><th>With</th><th>Status</th>{money && <th className="num">Bill</th>}</tr></thead>
         <tbody>
           {rows.map((x) => (
             <tr key={x.id}>
@@ -200,12 +201,22 @@ export function ApptTable({ unitId, rows, tz, empty, timeOnly = false }) {
               <td className="small">{x.service_name}{x.mode === 'slot' && x.slots > 1 ? ` (${x.slots} slots)` : ''}</td>
               <td className="small">{withWhom(x.resources)}</td>
               <td><Badge tone={APPT_STATUS[x.status][1]}>{APPT_STATUS[x.status][0]}</Badge></td>
+              {money && <td className="num small"><MoneyNote x={x} /></td>}
             </tr>
           ))}
         </tbody>
       </table>
     </div>
   );
+}
+
+function MoneyNote({ x }) {
+  const balance = Number(x.balance);
+  const depositLeft = Number(x.deposit_due) - Number(x.paid);
+  if (x.status === 'booked' && depositLeft > 0) return <Badge tone="warn">Deposit {formatMoney(depositLeft)}</Badge>;
+  if (balance > 0) return <Badge tone="bad">Owes {formatMoney(balance)}</Badge>;
+  if (balance < 0) return <span>{formatMoney(-balance)} paid</span>;
+  return x.bill_status === 'closed' ? <span className="muted">Settled</span> : <span className="muted">—</span>;
 }
 
 // ---------------------------------------------------------------- new booking
@@ -309,7 +320,8 @@ function NewAppointment({ unitId, setup }) {
         {!chosen ? <p className="muted small">Choose a time above.</p> : (
           <>
             <p><strong>{service.name}</strong> · {longDate(date)} · {localTime(chosen.starts_at, tz)}–{localTime(chosen.ends_at, tz)}
-              {' · '}<strong>{formatMoney(Number(service.price) * n)}</strong></p>
+              {' · '}<strong>{formatMoney(Number(service.price) * n)}</strong>
+              {Number(service.deposit_pct) > 0 && <span className="muted"> · deposit {formatMoney(Math.round(Number(service.price) * n * Number(service.deposit_pct)) / 100)} to secure it</span>}</p>
             <div className="row wrap">
               {Object.entries(chosen.options).map(([role, free]) => (
                 <label key={role}>{role[0].toUpperCase() + role.slice(1)}
@@ -345,8 +357,11 @@ function Bookings({ unitId, tz }) {
   const [to, setTo] = useState(addDays(todayIn(tz ?? DEFAULT_TZ), 7));
   const [status, setStatus] = useState('');
   const [q, setQ] = useState('');
-  const rows = useLoad(() => api.get(`/api/bookings/${unitId}/appointments?from=${from}&to=${to}${status ? `&status=${status}` : ''}${q.trim() ? `&q=${encodeURIComponent(q.trim())}` : ''}`),
-    [unitId, from, to, status, q]);
+  const [money, setMoney] = useState('');
+  const { me } = useSession();
+  const seesMoney = Boolean(unitAccess(me, unitId, 'FIN'));
+  const rows = useLoad(() => api.get(`/api/bookings/${unitId}/appointments?${money ? '' : `from=${from}&to=${to}&`}${status ? `status=${status}&` : ''}${money ? `money=${money}&` : ''}${q.trim() ? `q=${encodeURIComponent(q.trim())}` : ''}`),
+    [unitId, from, to, status, q, money]);
   return (
     <section className="card">
       <div className="row wrap">
@@ -358,6 +373,13 @@ function Bookings({ unitId, tz }) {
             {Object.entries(APPT_STATUS).map(([k, [label]]) => <option key={k} value={k}>{label}</option>)}
           </select>
         </label>
+        {seesMoney && (
+          <label>Money
+            <select value={money} onChange={(e) => setMoney(e.target.value)}>
+              <option value="">Any</option><option value="deposit">Awaiting deposit</option><option value="owing">Owing (any date)</option>
+            </select>
+          </label>
+        )}
         <label className="grow">Search<input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Guest, phone or booking ref" /></label>
       </div>
       <ErrorNote error={rows.error} />
@@ -489,7 +511,8 @@ function Setup({ unitId, setup, unitType, onChange }) {
                   <td className="small">{s.mode === 'slot'
                     ? `${formatDuration(s.duration_min)} slots, ${s.min_slots}–${s.max_slots}`
                     : formatDuration(s.duration_min)}{s.buffer_min ? ` + ${s.buffer_min} min turnaround` : ''}</td>
-                  <td className="num">{formatMoney(s.price)}{s.mode === 'slot' ? <div className="muted small">per slot</div> : null}</td>
+                  <td className="num">{formatMoney(s.price)}{s.mode === 'slot' ? <div className="muted small">per slot</div> : null}
+                    {Number(s.deposit_pct) > 0 && <div className="muted small">{Number(s.deposit_pct)}% deposit</div>}</td>
                   <td className="small">{Object.entries(roleChoices(s, setup.resources)).map(([role, list]) => `${role}: ${list.map((r) => r.name).join(', ')}`).join(' · ') || <span className="muted">Nobody yet</span>}</td>
                   <td><button className="link" onClick={() => setEditingService(s)}>Edit</button></td>
                 </tr>
@@ -515,7 +538,7 @@ function ServiceForm({ unitId, unitType, resources, service, onCancel, onSaved }
     mode: service?.mode ?? (unitType === 'content_studio' ? 'slot' : 'service'),
     durationMin: service?.duration_min ?? (unitType === 'content_studio' ? 60 : 60), bufferMin: service?.buffer_min ?? 0,
     minSlots: service?.min_slots ?? 1, maxSlots: service?.max_slots ?? (unitType === 'content_studio' ? 4 : 1),
-    price: service?.price ?? '', onlineBookable: service?.online_bookable ?? false, isActive: service?.is_active ?? true,
+    price: service?.price ?? '', depositPct: Number(service?.deposit_pct ?? 0), onlineBookable: service?.online_bookable ?? false, isActive: service?.is_active ?? true,
   }));
   const [chosen, setChosen] = useState(() => Object.fromEntries((service?.resources ?? []).map((r) => [r.resourceId, r.role])));
   const [error, setError] = useState(null);
@@ -532,7 +555,7 @@ function ServiceForm({ unitId, unitType, resources, service, onCancel, onSaved }
     const body = {
       name: f.name, description: f.description, durationMin: f.durationMin, bufferMin: f.bufferMin,
       minSlots: f.mode === 'slot' ? f.minSlots : 1, maxSlots: f.mode === 'slot' ? f.maxSlots : 1,
-      price: Number(f.price), onlineBookable: f.onlineBookable, isActive: f.isActive,
+      price: Number(f.price), depositPct: Number(f.depositPct), onlineBookable: f.onlineBookable, isActive: f.isActive,
       resources: Object.entries(chosen).map(([resourceId, role]) => ({ resourceId, role })),
     };
     try {
@@ -562,6 +585,7 @@ function ServiceForm({ unitId, unitType, resources, service, onCancel, onSaved }
       {f.mode === 'slot' && <label>Fewest slots<input type="number" min="1" value={f.minSlots} onChange={set('minSlots', true)} /></label>}
       {f.mode === 'slot' && <label>Most slots<input type="number" min="1" value={f.maxSlots} onChange={set('maxSlots', true)} /></label>}
       <label>{f.mode === 'slot' ? 'Price per slot' : 'Price'}<input type="number" min="0" value={f.price} onChange={set('price')} required /></label>
+      <label>Deposit to book (%)<input type="number" min="0" max="100" value={f.depositPct} onChange={set('depositPct', true)} /></label>
       <label className="full">Description<input value={f.description} onChange={set('description')} /></label>
       <div className="full">
         <strong>Delivered by</strong>
