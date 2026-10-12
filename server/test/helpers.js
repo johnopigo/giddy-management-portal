@@ -26,8 +26,13 @@ export async function ownerQuery(sql, params) {
 
 /** Drops everything, re-applies migrations and seeds one tenant with owner, IT and spa partner. */
 export async function resetDatabase() {
-  await ownerQuery(`DROP SCHEMA IF EXISTS sec CASCADE; DROP SCHEMA IF EXISTS inv CASCADE; DROP SCHEMA public CASCADE; CREATE SCHEMA public;
-                    GRANT USAGE ON SCHEMA public TO giddy_app;`);
+  // Drop every schema the owner role created (sec, inv, fin, pos, …) plus public, then start clean.
+  await ownerQuery(`DO $$ DECLARE s text; BEGIN
+      FOR s IN SELECT nspname FROM pg_namespace WHERE nspowner = 'giddy_owner'::regrole AND nspname <> 'public' LOOP
+        EXECUTE format('DROP SCHEMA %I CASCADE', s);
+      END LOOP;
+    END $$;
+    DROP SCHEMA public CASCADE; CREATE SCHEMA public; GRANT USAGE ON SCHEMA public TO giddy_app;`);
   await migrate(process.env.DATABASE_OWNER_URL, () => {});
   const c = new pg.Client({ connectionString: process.env.DATABASE_OWNER_URL });
   await c.connect();

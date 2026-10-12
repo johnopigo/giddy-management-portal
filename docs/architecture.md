@@ -168,9 +168,56 @@ person involved. The sidebar bell refreshes every minute.
 - `customer_unit_profile` holds each unit's notes, tags and marketing consent, visible only to that unit
   (and read-only to the Owner for the Spa). Spa health/intake data will live in a separate SEN table (stage 10).
 
+## Books (finance core)
+
+Every unit keeps its own double-entry ledger (`fin` schema).
+
+- **Chart of accounts**, created automatically for each unit: 1000 Cash, 1010 Card/POS clearing, 1020 Bank,
+  1150 Due from other units, 1200 Inventory, 2000 Accounts payable, 2100 VAT payable, 2200 Due to other units,
+  3000 Opening balance equity, 4000 Sales revenue, 4100 Service charge income, 5000 Cost of goods sold,
+  5100 Stock write-offs, 5200 Stock adjustments, 5300 Stock used internally.
+- `journal_entry` / `journal_line` are append-only. A deferred constraint trigger refuses to commit any
+  entry whose debits and credits differ, so an unbalanced entry cannot exist.
+- **Monthly periods** are created on first posting. The owner of the unit's books (FIN write + CFG write:
+  the Owner, or the Partner for the Spa) closes a month after it ends, in order; closed months refuse postings
+  and cannot be reopened.
+- **Automatic postings** from every stock movement (trigger on `stock_movement`):
+
+  | Movement | Debit | Credit |
+  |---|---|---|
+  | opening balance | 1200 Inventory | 3000 Opening equity |
+  | purchase receipt | 1200 Inventory | 2000 Accounts payable |
+  | adjustment in / out | 1200 / 5200 | 5200 / 1200 |
+  | wastage | 5100 Write-offs | 1200 |
+  | issue (internal use) | 5300 Used internally | 1200 |
+  | sale / sale void | 5000 COGS / 1200 | 1200 / 5000 |
+  | sent to another unit | 1150 Due from (that unit) | 1200 |
+  | received from another unit | 1200 | 2200 Due to (that unit) |
+  | refused transfer put back | 1200 | 1150 |
+
+## Point of sale
+
+- `pos.checkout` takes the department, the store it sells from, lines (item + quantity, fractional allowed)
+  and payments (cash / card / transfer). **Prices always come from the unit's price list**; the till cannot
+  override them. Items without a price are not on the till.
+- Totals: subtotal − discount = net; service charge (`charges.service_pct`) on net; VAT (`tax.vat_pct`) on
+  net + service charge. The web till mirrors this in `web/src/lib/pricing.js` for display; the server decides.
+- Discounts above `pos.max_discount_pct` (default 10%) need configuration write (a manager-level seller).
+- Payments must cover the total; card and transfer cannot exceed it; change is given from cash only.
+- **Department restriction:** selling needs `fin.write` through an assignment that covers the department —
+  a cashier assigned to the Bar cannot sell in the Kitchen (`sec.can_sell`).
+- The sale posts: Dr cash (net of change) / card clearing / bank, Cr revenue (net of discount), Cr service
+  charge income, Cr VAT payable; and the stock leaves at average cost (Dr COGS, Cr Inventory).
+- **Voids:** only the owner of the unit's books, with a reason. Stock returns to the same batches at the
+  original cost and the sale's journal entry is reversed line for line. Tickets, lines and payments are
+  otherwise immutable (a ticket can change once: completed → voided).
+- **Sales history:** sellers (finance write without configuration write: cashiers, front desk) see their own
+  tickets; managers, the owner and read-only viewers see all.
+
 ## Open decisions
 
 - Partnership revenue share: which side the rate applies to, the revenue basis, who collects
   payments, and whether retail counts. The agreement table (stage 11) stores all four as settings.
-- Department-level narrowing of access (e.g. a cashier limited to the Bar) is stored on assignments
-  and will be applied to tables that carry a department, starting in stage 4.
+- Department-level narrowing is enforced at the till (stage 4). Reading data is still unit-wide.
+- Supplier payments (settling 2000 Accounts payable) and settling balances between units (1150 / 2200)
+  are not built yet.
