@@ -8,6 +8,7 @@ import { Badge, ErrorNote, formatDateTime } from '../components/ui.jsx';
 import { formatMoney } from '../components/UnitPicker.jsx';
 import { formatDuration, localDate, localTime, longDate, todayIn } from '../lib/time.js';
 import { APPT_STATUS, DEFAULT_TZ, TimeChooser, lengthLabel } from './AppointmentsPage.jsx';
+import { AppointmentBill } from '../components/AppointmentBill.jsx';
 
 export function AppointmentPage() {
   const { unitId, id } = useParams();
@@ -16,6 +17,7 @@ export function AppointmentPage() {
   const [error, setError] = useState(null);
   const [reason, setReason] = useState('');
   const [moving, setMoving] = useState(false);
+  const [keepDeposit, setKeepDeposit] = useState(true);
   const canWrite = unitAccess(me, unitId, 'OPS') === 'write';
   const run = async (fn) => {
     setError(null);
@@ -29,6 +31,9 @@ export function AppointmentPage() {
   const base = `/api/bookings/${unitId}/appointments/${id}`;
   const service = { mode: a.mode, duration_min: a.duration_min, min_slots: a.min_slots };
   const mins = Math.round((new Date(a.ends_at) - new Date(a.starts_at)) / 60000);
+  const credit = a.bill ? -Number(a.bill.balance) : 0;
+  const keep = credit > 0 && keepDeposit;
+  const canExtend = canWrite && a.mode === 'slot' && ['booked', 'checked_in'].includes(a.status) && a.slots < a.max_slots;
 
   return (
     <>
@@ -59,15 +64,24 @@ export function AppointmentPage() {
             <button className="primary" onClick={() => run(() => api.post(`${base}/check-in`))}
               title={date !== todayIn(tz) ? 'Check-in opens on the day' : undefined}>Check in</button>
             <button className="secondary" onClick={() => setMoving(!moving)}>Move</button>
-            <button className="secondary" onClick={() => run(() => api.post(`${base}/no-show`))}>No-show</button>
+            {canExtend && <button className="secondary" onClick={() => run(() => api.post(`${base}/extend`, { slots: 1 }))}>+1 slot</button>}
+            <button className="secondary" onClick={() => run(() => api.post(`${base}/no-show`, { keepDeposit: keep }))}>No-show</button>
             <input placeholder="Reason for cancelling" value={reason} onChange={(e) => setReason(e.target.value)} />
-            <button className="secondary" disabled={!reason.trim()} onClick={() => run(() => api.post(`${base}/cancel`, { reason }))}>Cancel booking</button>
+            <button className="secondary" disabled={!reason.trim()} onClick={() => run(() => api.post(`${base}/cancel`, { reason, keepDeposit: keep }))}>Cancel booking</button>
           </div>
         )}
+        {canWrite && a.status === 'booked' && credit > 0 && (
+          <label className="inline"><input type="checkbox" checked={keepDeposit} onChange={(e) => setKeepDeposit(e.target.checked)} />
+            If cancelled or a no-show, keep the {formatMoney(credit)} paid as a fee (untick to refund it first)</label>
+        )}
         {canWrite && a.status === 'checked_in' && (
-          <div className="row"><button className="primary" onClick={() => run(() => api.post(`${base}/complete`))}>Complete</button></div>
+          <div className="row wrap">
+            <button className="primary" onClick={() => run(() => api.post(`${base}/complete`))}>Complete</button>
+            {canExtend && <button className="secondary" onClick={() => run(() => api.post(`${base}/extend`, { slots: 1 }))}>+1 slot ({formatDuration(a.duration_min)})</button>}
+          </div>
         )}
       </section>
+      {a.bill && <AppointmentBill unitId={unitId} appt={a} onChanged={appt.reload} />}
       {moving && a.status === 'booked' && (
         <MovePanel appt={a} unitId={unitId} tz={tz} service={service}
           onMove={async (startsAt, slots, preferred) => { if (await run(() => api.post(`${base}/reschedule`, { startsAt, slots, preferred }))) setMoving(false); }} />
